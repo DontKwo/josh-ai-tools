@@ -56,11 +56,18 @@ def strip_frontmatter(content: str) -> str:
     return content
 
 
+def expand_template_variables(content: str) -> str:
+    linter_cmd = f"python {REPO_ROOT / 'scripts' / 'claudemd_linter.py'}"
+    report_path = f"{REPO_ROOT / 'scripts' / 'lint_report.txt'}"
+    return content.replace("{{LINTER_COMMAND}}", linter_cmd).replace("{{REPORT_PATH}}", report_path)
+
+
 def format_for_target(target: Path, core_content: str) -> str:
+    expanded = expand_template_variables(core_content)
     if target.suffix == ".mdc" or target.name == ".cursorrules":
         header = "---\ndescription: Josh AI Development and Linting Rules\nglobs: *\nalwaysApply: true\n---\n\n"
-        return header + core_content
-    return core_content
+        return header + expanded
+    return expanded
 
 
 def sync_rules(source: Path | None, ws: Path, dry_run: bool) -> int:

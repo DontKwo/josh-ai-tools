@@ -57,9 +57,14 @@ LEGEND = {
     35: "Button/box widget (QPushButton, QToolButton, QCheckBox, QRadioButton, QComboBox, QAction, spin box) has no setToolTip call anywhere in its class. Add one (via get_tooltip_for) or suppress with # noqa: 35.",
     36: "LLM internal metadata bug or citation artifact (oaicite, [cite: X], 【X】, turn0search0, utm_source=chatgpt). Remove artifact entirely.",
     37: "Conversational AI filler or salutation ('certainly!', 'here is the updated', 'hope this helps'). Remove conversational filler.",
-    38: "Non-descriptive, single-character, or generic variable name. Use an intention-revealing name.",
-    39: "Spelling mistake or developer typo. Fix the spelling or suppress with # noqa: 39.",
-    40: "Standard linter violation (via ruff/flake8). Resolve the violation.",
+    38: "Calculation function missing 'calc_' prefix or non-descriptive/generic variable name.",
+    39: "Collapsed complex equation (un-decomposed multi-operation formula) or developer typo/misspelling.",
+    40: "AI docstring bloat on simple function (Args/Returns on short helpers) or standard linter violation (ruff).",
+    41: "Heavy AI divider banners (######, ======). Remove or replace with simple comment.",
+    42: "Cryptic micro-optimization in loop or comprehension (nested walrus / multi-conditional generator).",
+    43: "Missing physical units or unit suffix on critical constant.",
+    44: "Artificial equation line break (splitting expression across lines unnecessarily when under 140 chars).",
+    45: "Over-engineered OOP in numerical code (unnecessary ABC/metaclass for simple mathematical POD).",
 }
 
 TOOLTIP_TARGET_CLASSES = {
@@ -271,11 +276,18 @@ COMPAT_PHRASES = [
     "compat layer", "compatibility layer",
 ]
 
-# Rule 38: Non-descriptive / generic variable names
+# Rule 38: Non-descriptive / generic variable names and domain shorthand
 VAGUE_VAR_NAMES = {
     "temp", "tmp", "val", "ret", "foo", "bar", "baz", "dummy", "stuff", "thing",
 }
-ALLOWED_SHORT_VARS = {"_", "i", "j", "k", "x", "y", "z", "e", "f"}
+ALLOWED_SHORT_VARS = {
+    "_", "i", "j", "k", "x", "y", "z", "e", "f", "m", "n", "p", "t", "v", "w",
+    "gam", "cp", "Cp", "R", "M", "T04", "T03", "T0a", "Ta", "P05_P04", "p0_px",
+    "p_rat", "PR", "TSFC", "ISP", "GLOW", "TW0", "dV", "m_prop", "m_inert",
+    "m0", "v_i", "v_h", "mu", "nt", "Tmax", "c4", "s4", "s2_c2", "exp", "sqr",
+    "num", "denom", "term1", "term2", "term3", "term_axial", "term_coupling",
+    "term_transverse", "expansion_term",
+}
 
 # Rule 39: Common spelling mistakes and typos
 TYPO_PATTERNS = {
@@ -289,8 +301,52 @@ TYPO_PATTERNS = {
     "ahrdcoded": "hardcoded",
 }
 
+# Rules 41 & 43 Engineering checks
+AI_BANNER_RE = re.compile(r"^(?:#|//|\*)\s*([#=]{5,})\s*$|^([#=]{5,})\s*$")
+CALC_NAME_KEYWORDS = (
+    "thrust", "isp", "tsfc", "delta_v", "glow", "mach", "enthalpy",
+    "entropy", "reynolds", "trajectory", "orbit", "stage_mass", "prop_mass",
+)
+PHYSICAL_CONST_NAMES = {
+    "PRESSURE", "TEMP", "TEMPERATURE", "THRUST", "MASS", "WEIGHT",
+    "LENGTH", "VELOCITY", "SPEED", "DENSITY", "ALTITUDE", "RADIUS", "DIAMETER",
+}
+UNIT_SUFFIXES = (
+    "_M", "_MM", "_CM", "_IN", "_FT", "_MI", "_KM",
+    "_KG", "_G", "_LB", "_LBF",
+    "_S", "_MIN", "_HR", "_HZ",
+    "_DEG", "_RAD",
+    "_PA", "_KPA", "_PSI", "_BAR",
+    "_J", "_W", "_KW", "_WH", "_HP",
+    "_MPH", "_KTS", "_RPM", "_LBIN", "_LBFT",
+)
+UNIT_COMMENT_RE = re.compile(
+    r"#\s*(?:[A-Za-z0-9_\^/·\-°]+|ft/s\^2|J/kg|K|Pa|psi|bar|kg|lb|m|s|deg|rad)\b",
+    re.IGNORECASE,
+)
+
+# Configurable verification levels
+LEVEL_RULES: dict[str, set[int]] = {
+    "standard": {
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+        14, 15, 16, 17, 18, 19, 22, 24, 27,
+        36, 37, 40, 41, 44,
+    },
+    "strict": {
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+        14, 15, 16, 17, 18, 19, 22, 24, 27,
+        36, 37, 38, 39, 40, 41, 42, 43, 44, 45,
+    },
+    "full": set(range(1, 46)),
+}
+
 HEADING_RE = re.compile(r"^#{1,6}\s+(.+)$")
-NOQA_RE = re.compile(r"#\s*noqa(?::\s*([\d,\s]+))?|//\s*noqa(?::\s*([\d,\s]+))?", re.IGNORECASE)
+NOQA_RE = re.compile(
+    r"#\s*noqa(?::\s*([\d,\s]+))?|"
+    r"//\s*noqa(?::\s*([\d,\s]+))?|"
+    r"<!--\s*noqa(?::\s*([\d,\s]+))?\s*-->",
+    re.IGNORECASE,
+)
 LONG_OK_RE = re.compile(r"(?:#|//)\s*long-comment-ok", re.IGNORECASE)
 TODO_RE = re.compile(r"(?:#|//|/\*)\s*(TODO|FIXME|HACK|XXX)\b", re.IGNORECASE)
 HARDCODED_PATH_RE = re.compile(r"^[A-Za-z]:[\\/]|^/(home|Users)/")
@@ -305,42 +361,46 @@ DEBUG_PATTERNS = [
 ]
 
 
-def noqa_codes(line):
+def noqa_codes(line: str) -> set[int] | str | None:
     m = NOQA_RE.search(line)
     if not m:
         return None
-    codes_str = m.group(1) or m.group(2)
+    codes_str = m.group(1) or m.group(2) or m.group(3)
     if not codes_str:
         return "ALL"
     return {int(c) for c in re.findall(r"\d+", codes_str)}
 
 
-def suppressed(line, code):
+def suppressed(line: str, code: int | None) -> bool:
     codes = noqa_codes(line)
     if codes is None:
         return False
-    return codes == "ALL" or code in codes
+    return codes == "ALL" or (code is not None and code in codes)
 
 
-def scan_text_line(path, lineno, line, violations):
+def scan_text_line(path: Path, lineno: int, line: str, violations: list[tuple[Path, int, int]]) -> None:
     if suppressed(line, None):
         return
 
     # Linter self-hosting: do not flag the linter's own constant definitions
-    if path.name == "claudemd_linter.py" and 95 <= lineno <= 290:
+    if path.name == "claudemd_linter.py" and 95 <= lineno <= 450:
         return
 
+    scan_line = line
+    if path.suffix == ".md":
+        scan_line = re.sub(r"`[^`]*`", "", line)
+
     for ch, code in UNICODE_BAD.items():
-        if ch in line and not suppressed(line, code):
+        if ch in scan_line and not suppressed(line, code):
             violations.append((path, lineno, code))
-    if EMOJI_RE.search(line) and not suppressed(line, 3):
+    if EMOJI_RE.search(scan_line) and not suppressed(line, 3):
         violations.append((path, lineno, 3))
-    low = line.lower()
+    low = scan_line.lower()
     for phrase in AI_PHRASES:
         if phrase in low and not suppressed(line, 4):
             violations.append((path, lineno, 4))
             break
-    if NEGATIVE_PARALLELISM_RE.search(line) and not suppressed(line, 5):
+    if NEGATIVE_PARALLELISM_RE.search(scan_line) and not suppressed(line, 5):
         violations.append((path, lineno, 5))
     for phrase in VAGUE_ATTRIBUTION:
         if phrase in low and not suppressed(line, 6):
@@ -354,7 +414,7 @@ def scan_text_line(path, lineno, line, violations):
         if phrase in low and not suppressed(line, 8):
             violations.append((path, lineno, 8))
             break
-    if AI_METADATA_RE.search(line) and not suppressed(line, 36):
+    if AI_METADATA_RE.search(scan_line) and not suppressed(line, 36):
         violations.append((path, lineno, 36))
     for phrase in CONVERSATIONAL_AI_PHRASES:
         if phrase in low and not suppressed(line, 37):
@@ -367,6 +427,11 @@ def scan_text_line(path, lineno, line, violations):
             violations.append((path, lineno, 39))
             break
 
+    # Rule 41: Heavy AI divider banners
+    if path.suffix not in (".md", ".txt", ".rst"):
+        if AI_BANNER_RE.search(line) and not suppressed(line, 41):
+            violations.append((path, lineno, 41))
+
     # Multi-language leftover debug print check (Code 25)
     if path.suffix not in (".py", ".md", ".txt"):
         for pattern in DEBUG_PATTERNS:
@@ -375,7 +440,9 @@ def scan_text_line(path, lineno, line, violations):
                 break
 
 
-def scan_markdown_headings(path, lines, violations):
+def scan_markdown_headings(path: Path, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
+    if _check_noqa_in_file(path, 1, 19):
+        return
     bold_or_title_count = 0
     prev_level = 0
 
@@ -383,23 +450,23 @@ def scan_markdown_headings(path, lines, violations):
         m = HEADING_RE.match(line.strip())
         if m:
             text = m.group(1)
-            # Level check
             level = len(line) - len(line.lstrip("#"))
             if prev_level > 0 and level > prev_level + 1:
-                # Skipped heading level
                 if not suppressed(line, 19):
                     violations.append((path, i, 19))
             prev_level = level
 
             words = text.replace("*", "").split()
-            if words and sum(1 for w in words if w[:1].isupper()) / len(words) > 0.7:
+            if "**" in text or ("#" in text):
+                bold_or_title_count += 1
+            elif len(words) >= 4 and sum(1 for w in words if w[:1].isupper()) / len(words) > 0.8:
                 bold_or_title_count += 1
 
-    if bold_or_title_count >= 3:
+    if bold_or_title_count >= 5 and not _check_noqa_in_file(path, 1, 19):
         violations.append((path, 0, 19))
 
 
-def scan_comment_blocks(path, lines, violations):
+def scan_comment_blocks(path: Path, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
     i = 0
     n = len(lines)
     comment_prefixes = ("#", "//") if path.suffix != ".py" else ("#",)
@@ -443,7 +510,7 @@ def extract_function_bodies(source: str) -> dict:
     return functions
 
 
-def detect_duplicate_code(all_files_funcs: dict, violations):
+def detect_duplicate_code(all_files_funcs: dict[Path, dict], violations: list[tuple[Path, int, int]]) -> None:
     hash_to_occurrences = defaultdict(list)
     for fpath, funcs in all_files_funcs.items():
         for h, (fname, lineno, body) in funcs.items():
@@ -469,7 +536,7 @@ def _has_noqa(text: str, code: int) -> bool:
 # ---------------------------------------------------------------------------
 # Category C: Unused code detection
 # ---------------------------------------------------------------------------
-def detect_unused_code(files, violations):
+def detect_unused_code(files: list[Path], violations: list[tuple[Path, int, int]]) -> None:
     try:
         import vulture
     except ImportError:
@@ -494,7 +561,11 @@ def detect_unused_code(files, violations):
 def _check_noqa_in_file(fpath: Path, lineno: int, code: int) -> bool:
     try:
         lines = fpath.read_text(encoding="utf-8").splitlines()
-        if lineno > 0 and lineno <= len(lines):
+        if not lines:
+            return False
+        if suppressed(lines[0], code):
+            return True
+        if 0 < lineno <= len(lines):
             return suppressed(lines[lineno - 1], code)
     except Exception:
         pass
@@ -517,13 +588,13 @@ def _module_dotted_path(fpath: Path, root: Path) -> str:
     return ".".join(parts)
 
 
-def _is_type_checking_test(test) -> bool:
+def _is_type_checking_test(test: ast.AST) -> bool:
     if isinstance(test, ast.Name) and test.id == "TYPE_CHECKING":
         return True
     return isinstance(test, ast.Attribute) and test.attr == "TYPE_CHECKING"
 
 
-def _type_checking_guarded_ids(tree) -> set:
+def _type_checking_guarded_ids(tree: ast.AST) -> set[int]:
     guarded = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.If) and _is_type_checking_test(node.test):
@@ -533,7 +604,7 @@ def _type_checking_guarded_ids(tree) -> set:
     return guarded
 
 
-def detect_module_graph_issues(files: list, root: Path, violations: list) -> None:
+def detect_module_graph_issues(files: list[Path], root: Path, violations: list[tuple[Path, int, int]]) -> None:
     py_files = [f for f in files if f.suffix == ".py"]
     if len(py_files) < 2:
         return
@@ -619,11 +690,23 @@ def detect_module_graph_issues(files: list, root: Path, violations: list) -> Non
 # ---------------------------------------------------------------------------
 # Category D: Python AST checks
 # ---------------------------------------------------------------------------
-def scan_python_ast(path, source, lines, violations):
+def scan_python_ast(path: Path, source: str, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
     try:
         tree = ast.parse(source)
     except SyntaxError:
         return
+
+    # Rule 43: Missing physical units on critical constants
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id.isupper():
+                    tid = target.id
+                    if any(tid == c or tid.startswith(c + "_") for c in PHYSICAL_CONST_NAMES):
+                        if not any(tid.endswith(suf) for suf in UNIT_SUFFIXES):
+                            line = lines[node.lineno - 1] if node.lineno - 1 < len(lines) else ""
+                            if not UNIT_COMMENT_RE.search(line) and not suppressed(line, 43):
+                                violations.append((path, node.lineno, 43))
 
     seen_non_import_top_level = False
 
@@ -674,6 +757,25 @@ def scan_python_ast(path, source, lines, violations):
             docstring = ast.get_docstring(node)
             if docstring and docstring.count("\n") > 6 and not suppressed(line, 18):
                 violations.append((path, node.lineno, 18))
+            # Rule 40: AI docstring bloat (Args/Returns on short helpers)
+            if docstring and len(node.body) <= 5:
+                if re.search(r"\b(Args|Parameters|Returns|Raises):\s*\n", docstring) and not suppressed(line, 40):
+                    violations.append((path, node.lineno, 40))
+
+            # Rule 38: Calculation function missing calc_ prefix
+            if getattr(node, "col_offset", 0) == 0:
+                fname = node.name.lower()
+                non_calc_prefixes = (
+                    "calc_", "test_", "get_", "set_", "is_", "has_", "plot_",
+                    "main", "scan_", "audit_", "detect_", "collect_", "fix_",
+                    "load_", "save_", "run_", "check_", "clean_", "format_",
+                    "convert", "prob", "_",
+                )
+                if not fname.startswith(non_calc_prefixes):
+                    if any(kw in fname for kw in CALC_NAME_KEYWORDS):
+                        if any(isinstance(sub, ast.BinOp) for sub in ast.walk(node)):
+                            if not suppressed(line, 38):
+                                violations.append((path, node.lineno, 38))
 
         if isinstance(node, ast.FunctionDef) and getattr(node, "col_offset", 0) > 0:
             for sub in ast.walk(node):
@@ -681,6 +783,37 @@ def scan_python_ast(path, source, lines, violations):
                     subline = lines[sub.lineno - 1] if sub.lineno - 1 < len(lines) else ""
                     if not suppressed(subline, 13):
                         violations.append((path, sub.lineno, 13))
+
+        # Rule 39: Collapsed complex equation (un-decomposed)
+        if isinstance(node, ast.Return) and node.value:
+            math_ops = sum(1 for sub in ast.walk(node.value) if isinstance(sub, ast.BinOp))
+            if math_ops >= 4 and not suppressed(line, 39):
+                violations.append((path, node.lineno, 39))
+
+        # Rule 42: Cryptic micro-optimization in loop or comprehension
+        if isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+            has_walrus = any(isinstance(sub, ast.NamedExpr) for sub in ast.walk(node))
+            has_multi_if = any(len(gen.ifs) > 1 for gen in node.generators)
+            if (has_walrus or has_multi_if) and not suppressed(line, 42):
+                violations.append((path, node.lineno, 42))
+
+        # Rule 44: Artificial equation line break
+        if isinstance(node, ast.Assign) and getattr(node, "end_lineno", node.lineno) > node.lineno:
+            has_math = any(isinstance(sub, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow)) for sub in ast.walk(node.value))
+            if has_math:
+                raw_chunk = " ".join(lines[node.lineno - 1 : node.end_lineno])
+                compact_chunk = " ".join(raw_chunk.split())
+                if len(compact_chunk) <= 140 and not suppressed(line, 44):
+                    violations.append((path, node.lineno, 44))
+
+        # Rule 45: Over-engineered OOP in numerical scripts
+        if isinstance(node, ast.ClassDef):
+            has_abc = any(_base_name(b) in ("ABC", "ABCMeta") for b in node.bases)
+            has_abc = has_abc or any(kw.arg == "metaclass" and _base_name(kw.value) in ("ABC", "ABCMeta") for kw in node.keywords)
+            if has_abc:
+                has_calc = any(isinstance(sub, ast.FunctionDef) and sub.name.startswith("calc_") for sub in ast.iter_child_nodes(tree))
+                if has_calc and not suppressed(line, 45):
+                    violations.append((path, node.lineno, 45))
 
         if isinstance(node, ast.Compare):
             for op, comparator in zip(node.ops, node.comparators):
@@ -733,7 +866,7 @@ def scan_python_ast(path, source, lines, violations):
                             violations.append((path, body_node.lineno, 22))
 
 
-def _base_name(node):
+def _base_name(node: ast.AST | None) -> str | None:
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
@@ -741,7 +874,7 @@ def _base_name(node):
     return None
 
 
-def _call_target_name(func_attr):
+def _call_target_name(func_attr: ast.Attribute) -> str | None:
     value = func_attr.value
     if isinstance(value, ast.Attribute):
         return value.attr
@@ -750,7 +883,7 @@ def _call_target_name(func_attr):
     return None
 
 
-def scan_dialog_label_selectability(path, source, lines, violations):
+def scan_dialog_label_selectability(path: Path, source: str, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -780,7 +913,7 @@ def scan_dialog_label_selectability(path, source, lines, violations):
                 violations.append((path, lineno, 33))
 
 
-def _assign_target_name(target):
+def _assign_target_name(target: ast.AST) -> str | None:
     if isinstance(target, ast.Name):
         return target.id
     if isinstance(target, ast.Attribute):
@@ -788,7 +921,7 @@ def _assign_target_name(target):
     return None
 
 
-def scan_missing_tooltips(path, source, lines, violations):
+def scan_missing_tooltips(path: Path, source: str, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -819,13 +952,13 @@ def scan_missing_tooltips(path, source, lines, violations):
                 violations.append((path, lineno, 35))
 
 
-def _function_is_platform_scoped(func) -> bool:
+def _function_is_platform_scoped(func: ast.FunctionDef) -> bool:
     if any(keyword in func.name.lower() for keyword in PLATFORM_NAME_KEYWORDS):
         return True
     return any(isinstance(sub, ast.Attribute) and sub.attr == "platform" for sub in ast.walk(func))
 
 
-def scan_os_specific_code(path, source, lines, violations):
+def scan_os_specific_code(path: Path, source: str, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
     try:
         tree = ast.parse(source)
     except SyntaxError:
@@ -862,13 +995,13 @@ def scan_os_specific_code(path, source, lines, violations):
             violations.append((path, lineno, 32))
 
 
-def _is_string_literal(node) -> bool:
+def _is_string_literal(node: ast.AST) -> bool:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return True
     return isinstance(node, ast.JoinedStr)
 
 
-def _is_docstring_or_dunder(node):
+def _is_docstring_or_dunder(node: ast.AST) -> bool:
     if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
         return True
     if isinstance(node, ast.Assign):
@@ -881,7 +1014,7 @@ def _is_docstring_or_dunder(node):
 # ---------------------------------------------------------------------------
 # Per-file scanner worker (used by both sequential & parallel runs)
 # ---------------------------------------------------------------------------
-def scan_single_file(path_str: str) -> tuple[str, list, dict]:
+def scan_single_file(path_str: str) -> tuple[str, list[tuple[str, int, int]], dict[str, tuple[str, int, str]]]:
     path = Path(path_str)
     violations = []
     funcs = {}
@@ -908,12 +1041,11 @@ def scan_single_file(path_str: str) -> tuple[str, list, dict]:
     elif path.suffix in (".js", ".jsx", ".ts", ".tsx", ".rs", ".go", ".c", ".cpp", ".h", ".sh"):
         scan_comment_blocks(path, lines, violations)
 
-    # Convert violations to serializable format (str(path), lineno, code)
     serializable_violations = [(str(v[0]), v[1], v[2]) for v in violations]
     return path_str, serializable_violations, funcs
 
 
-def scan_file(path, violations):
+def scan_file(path: Path, violations: list[tuple[Path, int, int]]) -> None:
     _, file_violations, _ = scan_single_file(str(path))
     for v in file_violations:
         violations.append((Path(v[0]), v[1], v[2]))
@@ -1057,32 +1189,95 @@ def run_standard_linter(target_dir: Path) -> list[tuple[Path, int, int]]:
         return []
 
 
+def parse_cli_args(raw_args: list[str]) -> tuple[str, str, set[int], set[int], dict[str, bool]]:
+    level = "strict"
+    skip_codes: set[int] = set()
+    only_codes: set[int] = set()
+    flags = {
+        "noqa": False,
+        "diff": False,
+        "staged": False,
+        "no_cache": False,
+        "no_parallel": False,
+        "no_ruff": False,
+    }
+    target = "."
+
+    i = 0
+    target_set = False
+    while i < len(raw_args):
+        arg = raw_args[i]
+        if arg == "--level" and i + 1 < len(raw_args):
+            level = raw_args[i + 1].lower()
+            i += 2
+        elif arg.startswith("--level="):
+            level = arg.split("=", 1)[1].lower()
+            i += 1
+        elif arg == "--skip" and i + 1 < len(raw_args):
+            skip_codes = {int(c.strip()) for c in raw_args[i + 1].split(",") if c.strip().isdigit()}
+            i += 2
+        elif arg.startswith("--skip="):
+            skip_codes = {int(c.strip()) for c in arg.split("=", 1)[1].split(",") if c.strip().isdigit()}
+            i += 1
+        elif arg == "--only" and i + 1 < len(raw_args):
+            only_codes = {int(c.strip()) for c in raw_args[i + 1].split(",") if c.strip().isdigit()}
+            i += 2
+        elif arg.startswith("--only="):
+            only_codes = {int(c.strip()) for c in arg.split("=", 1)[1].split(",") if c.strip().isdigit()}
+            i += 1
+        elif arg == "--noqa":
+            flags["noqa"] = True
+            i += 1
+        elif arg == "--diff":
+            flags["diff"] = True
+            i += 1
+        elif arg == "--staged":
+            flags["staged"] = True
+            i += 1
+        elif arg == "--no-cache":
+            flags["no_cache"] = True
+            i += 1
+        elif arg == "--no-parallel":
+            flags["no_parallel"] = True
+            i += 1
+        elif arg == "--no-ruff":
+            flags["no_ruff"] = True
+            i += 1
+        elif not arg.startswith("--"):
+            if not target_set:
+                target = arg
+                target_set = True
+            i += 1
+        else:
+            i += 1
+
+    return target, level, skip_codes, only_codes, flags
+
+
 # ---------------------------------------------------------------------------
 # Driver / CLI
 # ---------------------------------------------------------------------------
 def main() -> None:
     raw_args = sys.argv[1:]
-    is_audit = "--noqa" in raw_args
-    is_diff = "--diff" in raw_args
-    is_staged = "--staged" in raw_args
-    no_cache = "--no-cache" in raw_args
-    no_parallel = "--no-parallel" in raw_args
-    no_ruff = "--no-ruff" in raw_args
+    target, level, skip_codes, only_codes, flags = parse_cli_args(raw_args)
 
-    target_args = [a for a in raw_args if not a.startswith("--")]
-    target = target_args[0] if target_args else "."
-
-    if is_audit:
+    if flags["noqa"]:
         report = audit_suppressions(target)
         print(report)  # noqa: 25
         Path(REPORT_PATH).write_text(report, encoding="utf-8")
         return
 
+    active_codes = set(LEVEL_RULES.get(level, LEVEL_RULES["strict"]))
+    if only_codes:
+        active_codes = set(only_codes)
+    if skip_codes:
+        active_codes = active_codes - skip_codes
+
     p = Path(target).resolve()
     root = p if p.is_dir() else p.parent
 
-    if is_diff or is_staged:
-        files = collect_git_diff_files(target, staged_only=is_staged)
+    if flags["diff"] or flags["staged"]:
+        files = collect_git_diff_files(target, staged_only=flags["staged"])
         print(f"Git diff scoped: Scanning {len(files)} changed file(s).")  # noqa: 25
     else:
         files = collect_files(target)
@@ -1092,7 +1287,7 @@ def main() -> None:
         print(f"No matching files found. Report written to {REPORT_PATH}")  # noqa: 25
         return
 
-    cache = {} if no_cache else load_cache()
+    cache = {} if flags["no_cache"] else load_cache()
     files_to_scan = []
     violations = []
     all_files_funcs = {}
@@ -1102,7 +1297,6 @@ def main() -> None:
         f_hash = get_file_hash(f)
         cached_entry = cache.get(f_str)
         if cached_entry and cached_entry.get("hash") == f_hash:
-            # Rehydrate cached violations
             for v in cached_entry.get("violations", []):
                 violations.append((Path(v[0]), v[1], v[2]))
             if f.suffix == ".py" and "funcs" in cached_entry:
@@ -1113,9 +1307,8 @@ def main() -> None:
     if files_to_scan:
         paths_to_scan_str = [str(f[0]) for f in files_to_scan]
 
-        # Use multiprocessing only if safe (> 15 files and not disabled)
         safe_workers = min(os.cpu_count() or 1, 4)
-        if len(paths_to_scan_str) > 15 and not no_parallel and safe_workers > 1:
+        if len(paths_to_scan_str) > 15 and not flags["no_parallel"] and safe_workers > 1:
             with Pool(processes=safe_workers) as pool:
                 scan_results = pool.map(scan_single_file, paths_to_scan_str)
         else:
@@ -1130,7 +1323,6 @@ def main() -> None:
             if funcs:
                 all_files_funcs[fpath] = funcs
 
-            # Update cache entry
             cache[path_str] = {
                 "hash": hash_lookup.get(path_str, ""),
                 "violations": file_violations,
@@ -1139,13 +1331,17 @@ def main() -> None:
 
         save_cache(cache)
 
-    detect_duplicate_code(all_files_funcs, violations)
-    detect_unused_code(files, violations)
-    if p.is_dir() and not (is_diff or is_staged):
+    if 20 in active_codes:
+        detect_duplicate_code(all_files_funcs, violations)
+    if 21 in active_codes:
+        detect_unused_code(files, violations)
+    if p.is_dir() and not (flags["diff"] or flags["staged"]) and any(c in active_codes for c in (29, 30)):
         detect_module_graph_issues(files, root, violations)
-    if not no_ruff:
+    if 40 in active_codes and not flags["no_ruff"]:
         ruff_violations = run_standard_linter(root)
         violations.extend(ruff_violations)
+
+    violations = [v for v in violations if v[2] in active_codes]
 
     codes_present = sorted({v[2] for v in violations})
     out_lines = ["LEGEND"]

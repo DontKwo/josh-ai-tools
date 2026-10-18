@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.claudemd_linter import scan_file, noqa_codes, suppressed
-from scripts.lint_fixer import fix_line, UNICODE_REPLACEMENTS
+from scripts.claudemd_linter import scan_file, noqa_codes, suppressed, parse_cli_args, LEVEL_RULES
+from scripts.lint_fixer import fix_line, UNICODE_REPLACEMENTS, condense_docstrings
 from scripts.repo_map import generate_map
 from scripts.clean_encoding import clean_content
 
@@ -108,6 +108,73 @@ class TestClaudemdLinter(unittest.TestCase):
         codes_all = self._scan_snippet("def run() -> None:\n    print('debug')  # noqa\n")
         self.assertNotIn(25, codes_all)
 
+    def test_rule_38_calc_naming(self):
+        bad_code = "def thrust_output(mass: float, accel: float) -> float:\n    return mass * accel\n"
+        codes_bad = self._scan_snippet(bad_code)
+        self.assertIn(38, codes_bad)
+
+        good_code = "def calc_thrust(mass: float, accel: float) -> float:\n    return mass * accel\n"
+        codes_good = self._scan_snippet(good_code)
+        self.assertNotIn(38, codes_good)
+
+    def test_rule_39_collapsed_equation(self):
+        bad_code = "def calc_result(a: float, b: float, c: float, d: float, e: float) -> float:\n    return a + b * c / d - e\n"
+        codes_bad = self._scan_snippet(bad_code)
+        self.assertIn(39, codes_bad)
+
+        good_code = "def calc_result(a: float, b: float, c: float) -> float:\n    term = b * c\n    return a + term\n"
+        codes_good = self._scan_snippet(good_code)
+        self.assertNotIn(39, codes_good)
+
+    def test_rule_40_docstring_bloat(self):
+        bloated = 'def add(a: int, b: int) -> int:\n    """Add two numbers.\n\n    Args:\n        a: First.\n        b: Second.\n\n    Returns:\n        Sum.\n    """\n    return a + b\n'
+        codes = self._scan_snippet(bloated)
+        self.assertIn(40, codes)
+
+    def test_rule_41_divider_banners(self):
+        code = "########################################\nx = 1\n"
+        codes = self._scan_snippet(code)
+        self.assertIn(41, codes)
+
+    def test_rule_42_loop_micro_optimization(self):
+        code = "res = [y for x in range(10) if (y := x * 2) > 5]\n"
+        codes = self._scan_snippet(code)
+        self.assertIn(42, codes)
+
+    def test_rule_43_missing_physical_units(self):
+        bad_code = "PRESSURE = 101325\n"
+        codes_bad = self._scan_snippet(bad_code)
+        self.assertIn(43, codes_bad)
+
+        good_code1 = "PRESSURE_PA = 101325\n"
+        codes_good1 = self._scan_snippet(good_code1)
+        self.assertNotIn(43, codes_good1)
+
+        good_code2 = "PRESSURE = 101325  # Pa\n"
+        codes_good2 = self._scan_snippet(good_code2)
+        self.assertNotIn(43, codes_good2)
+
+    def test_rule_44_artificial_equation_line_break(self):
+        bad_code = "total = (\n    a + b\n    + c\n)\n"
+        codes_bad = self._scan_snippet(bad_code)
+        self.assertIn(44, codes_bad)
+
+    def test_rule_45_overengineered_oop(self):
+        code = "from abc import ABC\nclass BasePropulsion(ABC):\n    pass\ndef calc_thrust() -> float:\n    return 1.0\n"
+        codes = self._scan_snippet(code)
+        self.assertIn(45, codes)
+
+    def test_cli_levels_and_filters(self):
+        target, level, skip, only, flags = parse_cli_args(["src", "--level", "standard", "--skip", "1,2", "--no-ruff"])
+        self.assertEqual(target, "src")
+        self.assertEqual(level, "standard")
+        self.assertEqual(skip, {1, 2})
+        self.assertTrue(flags["no_ruff"])
+
+        target2, level2, skip2, only2, flags2 = parse_cli_args(["--only", "38,39"])
+        self.assertEqual(level2, "strict")
+        self.assertEqual(only2, {38, 39})
+
 
 class TestLintFixer(unittest.TestCase):
 
@@ -128,6 +195,18 @@ class TestLintFixer(unittest.TestCase):
         fixed, changes = fix_line(line, 1, Path("test.py"), fix_emojis=False)
         self.assertEqual(fixed, 'title = "smart quotes and ellipsis..."\n')
         self.assertGreater(len(changes), 0)
+
+    def test_auto_fixer_rule_41_banner(self):
+        line = "########################################\n"
+        fixed, changes = fix_line(line, 1, Path("test.py"), fix_emojis=False, fix_banners=True)
+        self.assertEqual(fixed, "# ---\n")
+        self.assertGreater(len(changes), 0)
+
+    def test_auto_fixer_rule_40_docstring(self):
+        content = 'def helper():\n    """Quick sum.\n\n    Args:\n        x: value\n    """\n    return x\n'
+        cleaned, count = condense_docstrings(content)
+        self.assertEqual(count, 1)
+        self.assertNotIn("Args:", cleaned)
 
 
 class TestCleanEncoding(unittest.TestCase):
