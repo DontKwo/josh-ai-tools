@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "josh-ai-tools": {
+      "command": "python",
+      "args": [
+        "{{MCP_SERVER_PATH}}"
+      ]
+    }
+  }
+}
+
