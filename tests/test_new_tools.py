@@ -72,6 +72,22 @@ class TestNewTools(unittest.TestCase):
         removed = remove_hook(hook_path)
         self.assertTrue(removed)
 
+    def test_variable_name_auditor(self) -> None:
+        from scripts.check_variable_names import audit_file
+        bad_file = self.temp_dir / "bad_vars.py"
+        bad_file.write_text("def test_func(arg):\n    temp = 42\n    return temp\n", encoding="utf-8")
+        violations = audit_file(bad_file)
+        names = [name for _, name, _ in violations]
+        self.assertIn("arg", names)
+        self.assertIn("temp", names)
+
+    def test_spell_checker(self) -> None:
+        from scripts.spell_checker import check_line_spelling
+        hits = check_line_spelling("We must recieve the seperate files.")
+        wrong_words = [w.lower() for w, _ in hits]
+        self.assertIn("recieve", wrong_words)
+        self.assertIn("seperate", wrong_words)
+
 
 if __name__ == "__main__":
     unittest.main()

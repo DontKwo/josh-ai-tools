@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -56,6 +57,9 @@ LEGEND = {
     35: "Button/box widget (QPushButton, QToolButton, QCheckBox, QRadioButton, QComboBox, QAction, spin box) has no setToolTip call anywhere in its class. Add one (via get_tooltip_for) or suppress with # noqa: 35.",
     36: "LLM internal metadata bug or citation artifact (oaicite, [cite: X], 【X】, turn0search0, utm_source=chatgpt). Remove artifact entirely.",
     37: "Conversational AI filler or salutation ('certainly!', 'here is the updated', 'hope this helps'). Remove conversational filler.",
+    38: "Non-descriptive, single-character, or generic variable name. Use an intention-revealing name.",
+    39: "Spelling mistake or developer typo. Fix the spelling or suppress with # noqa: 39.",
+    40: "Standard linter violation (via ruff/flake8). Resolve the violation.",
 }
 
 TOOLTIP_TARGET_CLASSES = {
@@ -267,6 +271,24 @@ COMPAT_PHRASES = [
     "compat layer", "compatibility layer",
 ]
 
+# Rule 38: Non-descriptive / generic variable names
+VAGUE_VAR_NAMES = {
+    "temp", "tmp", "val", "ret", "foo", "bar", "baz", "dummy", "stuff", "thing",
+}
+ALLOWED_SHORT_VARS = {"_", "i", "j", "k", "x", "y", "z", "e", "f"}
+
+# Rule 39: Common spelling mistakes and typos
+TYPO_PATTERNS = {
+    "recieve": "receive", "recieved": "received", "seperate": "separate",
+    "seperated": "separated", "definately": "definitely", "occured": "occurred",
+    "occurance": "occurrence", "dependancy": "dependency", "compatability": "compatibility",
+    "paramater": "parameter", "arguement": "argument", "neccessary": "necessary",
+    "untill": "until", "wierd": "weird", "truely": "truly", "maintainance": "maintenance",
+    "modifed": "modified", "calback": "callback", "synchornize": "synchronize",
+    "insteuctions": "instructions", "evrry": "every", "autoamtically": "automatically",
+    "ahrdcoded": "hardcoded",
+}
+
 HEADING_RE = re.compile(r"^#{1,6}\s+(.+)$")
 NOQA_RE = re.compile(r"#\s*noqa(?::\s*([\d,\s]+))?|//\s*noqa(?::\s*([\d,\s]+))?", re.IGNORECASE)
 LONG_OK_RE = re.compile(r"(?:#|//)\s*long-comment-ok", re.IGNORECASE)
@@ -340,6 +362,10 @@ def scan_text_line(path, lineno, line, violations):
             break
     if TODO_RE.search(line) and not suppressed(line, 24):
         violations.append((path, lineno, 24))
+    for typo in TYPO_PATTERNS:
+        if re.search(r"\b" + typo + r"\b", low) and not suppressed(line, 39):
+            violations.append((path, lineno, 39))
+            break
 
     # Multi-language leftover debug print check (Code 25)
     if path.suffix not in (".py", ".md", ".txt"):
@@ -661,6 +687,13 @@ def scan_python_ast(path, source, lines, violations):
                 if isinstance(op, (ast.Eq, ast.NotEq)) and isinstance(comparator, ast.Constant) and comparator.value is None:
                     if not suppressed(line, 15):
                         violations.append((path, node.lineno, 15))
+
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            var_name = node.id
+            if not (var_name.startswith("__") and var_name.endswith("__")) and var_name not in ALLOWED_SHORT_VARS:
+                if len(var_name) == 1 or var_name.lower() in VAGUE_VAR_NAMES:
+                    if not suppressed(line, 38):
+                        violations.append((path, node.lineno, 38))
 
         if isinstance(node, ast.Call):
             if isinstance(node.func, ast.Attribute) and node.func.attr == "format":
@@ -997,6 +1030,33 @@ def audit_suppressions(target: str) -> str:
     return "\n".join(out_lines)
 
 
+def run_standard_linter(target_dir: Path) -> list[tuple[Path, int, int]]:
+    executable = shutil.which("ruff") or shutil.which("ruff.exe")
+    cmd: list[str] = []
+    if executable:
+        cmd = [executable, "check", "--select", "E9,F821,F822,F823,E722", "--no-fix", str(target_dir)]
+    elif shutil.which("uv"):
+        cmd = ["uv", "tool", "run", "ruff", "check", "--select", "E9,F821,F822,F823,E722", "--no-fix", str(target_dir)]
+    elif shutil.which("uvx"):
+        cmd = ["uvx", "ruff", "check", "--select", "E9,F821,F822,F823,E722", "--no-fix", str(target_dir)]
+
+    if not cmd:
+        return []
+
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        ruff_violations: list[tuple[Path, int, int]] = []
+        for line in res.stdout.splitlines():
+            m = re.match(r"^(.*?):(\d+):\d+:\s*(.+)$", line.strip())
+            if m:
+                filepath = Path(m.group(1)).resolve()
+                lineno = int(m.group(2))
+                ruff_violations.append((filepath, lineno, 40))
+        return ruff_violations
+    except Exception:
+        return []
+
+
 # ---------------------------------------------------------------------------
 # Driver / CLI
 # ---------------------------------------------------------------------------
@@ -1007,6 +1067,7 @@ def main() -> None:
     is_staged = "--staged" in raw_args
     no_cache = "--no-cache" in raw_args
     no_parallel = "--no-parallel" in raw_args
+    no_ruff = "--no-ruff" in raw_args
 
     target_args = [a for a in raw_args if not a.startswith("--")]
     target = target_args[0] if target_args else "."
@@ -1082,6 +1143,9 @@ def main() -> None:
     detect_unused_code(files, violations)
     if p.is_dir() and not (is_diff or is_staged):
         detect_module_graph_issues(files, root, violations)
+    if not no_ruff:
+        ruff_violations = run_standard_linter(root)
+        violations.extend(ruff_violations)
 
     codes_present = sorted({v[2] for v in violations})
     out_lines = ["LEGEND"]

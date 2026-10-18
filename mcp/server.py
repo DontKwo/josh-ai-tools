@@ -31,6 +31,8 @@ TOKEN_BUDGET_SCRIPT = REPO_ROOT / "scripts" / "token_budget.py"
 PACK_CONTEXT_SCRIPT = REPO_ROOT / "scripts" / "pack_context.py"
 SECRET_SCRIPT = REPO_ROOT / "scripts" / "secret_sanitizer.py"
 HOOK_SCRIPT = REPO_ROOT / "scripts" / "install_antigravity_hooks.py"
+VARS_SCRIPT = REPO_ROOT / "scripts" / "check_variable_names.py"
+SPELL_SCRIPT = REPO_ROOT / "scripts" / "spell_checker.py"
 
 IS_WINDOWS = platform.system() == "Windows"
 PYTHON_CMD = sys.executable or ("python" if IS_WINDOWS else "python3")
@@ -323,6 +325,26 @@ TOOLS = [
             },
         },
     },
+    {
+        "name": "audit_variable_names",
+        "description": "Audit Python codebase for short, cryptic, or non-descriptive variable and parameter names.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target": {"type": "string", "description": "Target file or directory (default: current directory)"},
+            },
+        },
+    },
+    {
+        "name": "check_spelling",
+        "description": "Check codebase source files, comments, and documentation for spelling errors and typos.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target": {"type": "string", "description": "Target file or directory (default: current directory)"},
+            },
+        },
+    },
 ]
 
 
@@ -536,6 +558,18 @@ def handle_tool_call(name: str, arguments: dict) -> list[dict]:
             cmd.extend(["--event", str(arguments["event"])])
         if arguments.get("remove"):
             cmd.append("--remove")
+        output = run_command_tool(cmd, cwd=effective_cwd)
+        return [{"type": "text", "text": output}]
+
+    elif name == "audit_variable_names":
+        target = arguments.get("target", ".")
+        cmd = [PYTHON_CMD, str(VARS_SCRIPT), target]
+        output = run_command_tool(cmd, cwd=effective_cwd)
+        return [{"type": "text", "text": output}]
+
+    elif name == "check_spelling":
+        target = arguments.get("target", ".")
+        cmd = [PYTHON_CMD, str(SPELL_SCRIPT), target]
         output = run_command_tool(cmd, cwd=effective_cwd)
         return [{"type": "text", "text": output}]
 
