@@ -37,6 +37,7 @@ SECRET_SCRIPT = REPO_ROOT / "scripts" / "secret_sanitizer.py"
 HOOK_SCRIPT = REPO_ROOT / "scripts" / "install_antigravity_hooks.py"
 VARS_SCRIPT = REPO_ROOT / "scripts" / "check_variable_names.py"
 SPELL_SCRIPT = REPO_ROOT / "scripts" / "spell_checker.py"
+GRILL_SCRIPT = REPO_ROOT / "scripts" / "grill_user.py"
 
 IS_WINDOWS = platform.system() == "Windows"
 BASE_CMD: list[str] = (
@@ -353,6 +354,16 @@ TOOLS = [
             },
         },
     },
+    {
+        "name": "grill_user",
+        "description": "Grill the user relentlessly about a plan, decision, or idea to stress-test their thinking.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "topic": {"type": "string", "description": "The topic, plan, decision, or idea to grill the user about."},
+            },
+        },
+    },
 ]
 
 
@@ -583,6 +594,12 @@ def handle_tool_call(name: str, arguments: dict) -> list[dict]:
     elif name == "check_spelling":
         target = arguments.get("target", ".")
         cmd = BASE_CMD + [ str(SPELL_SCRIPT), target]
+        output = run_command_tool(cmd, cwd=effective_cwd)
+        return [{"type": "text", "text": output}]
+
+    elif name == "grill_user":
+        topic = arguments.get("topic", "")
+        cmd = BASE_CMD + [str(GRILL_SCRIPT), topic]
         output = run_command_tool(cmd, cwd=effective_cwd)
         return [{"type": "text", "text": output}]
 

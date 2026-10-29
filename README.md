@@ -52,7 +52,7 @@ uv run --no-project python scripts/configure.py
 
 ## Global Terminal Shortcuts
 
-Once installed via `setup.bat` or `setup.sh`, you can run these 20 commands from any terminal in any project folder:
+Once installed via `setup.bat` or `setup.sh`, you can run these 21 commands from any terminal in any project folder:
 
 ```bash
 ailint            # Run the 45-rule linter (diff default, pass --full for whole repo)
@@ -75,6 +75,7 @@ aispell           # Scan code and comments for common typos
 aivars            # Check variable names for single-letter and uninformative identifiers
 aihook            # Install Antigravity and git safety hooks
 aisync            # Synchronize instructions across all configured AI tools
+aigrill           # Grill the user relentlessly about a plan or decision
 ```
 
 ---
@@ -87,12 +88,13 @@ josh-ai-tools/
 ├── setup.bat                      # Windows interactive setup script (auto-configures rules & MCP)
 ├── setup.sh                       # Linux & macOS interactive setup script (auto-configures rules & MCP)
 ├── .gitignore                     # Git ignores for Python, cache, and checkpoints
-├── bin/                           # 20 global terminal shortcuts
+├── bin/                           # 21 global terminal shortcuts
 │   ├── aiboost / aiboost.cmd      # Type annotation booster
 │   ├── aicontext / aicontext.cmd  # Context packing utility
 │   ├── aideps / aideps.cmd        # Dependency scanner
 │   ├── aidiff / aidiff.cmd        # AST git diff compressor
 │   ├── aifix / aifix.cmd          # Safe auto-fixer
+│   ├── aigrill / aigrill.cmd      # Grilling skill agent tool
 │   ├── aihook / aihook.cmd        # Hook installer
 │   ├── ailint / ailint.cmd        # 45-rule linter
 │   ├── aimd / aimd.cmd            # Universal document to Markdown converter
@@ -141,7 +143,7 @@ josh-ai-tools/
 │   ├── to_markdown.py             # Universal document to Markdown converter
 │   └── token_budget.py            # File token counter and context budget analyzer
 ├── mcp/
-│   └── server.py                  # Standard MCP server exposing 22 native tools
+│   └── server.py                  # Standard MCP server exposing 23 native tools
 ├── tests/
 │   ├── test_linter.py             # Unit tests for linter rules and companion tools
 │   └── test_new_tools.py          # Unit tests for context, budget, test runner, and spell checker
@@ -194,8 +196,8 @@ josh-ai-tools/
 ### 9. Hallucinated Dependency Scanner (`scripts/check_dependencies.py` / `aideps`)
 - Detects non-existent AI-hallucinated packages and undeclared dependencies.
 
-### 10. Native MCP Server with 22 Tools (`mcp/server.py`)
-- Directly exposes all 22 tools to Claude, Cursor, Windsurf, Cline, and Antigravity.
+### 10. Native MCP Server with 23 Tools (`mcp/server.py`)
+- Directly exposes all 23 tools to Claude, Cursor, Windsurf, Cline, and Antigravity.
 - Automatically configured for AI tools via `setup.bat`, `setup.sh`, and `configure.py`.
 
 ### 11. Complete Unit Test Suite (`tests/`)
