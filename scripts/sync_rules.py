@@ -11,6 +11,10 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Add scripts directory to path to allow importing utils
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+from utils import format_command_path
 TEMPLATE_PATH = REPO_ROOT / "templates" / "INSTRUCTIONS_TEMPLATE.md"
 ENGINEERING_PATH = REPO_ROOT / "templates" / "ENGINEERING_RULES.md"
 PYTHON_RULES_PATH = REPO_ROOT / "templates" / "PYTHON_RULES.md"
@@ -62,13 +66,6 @@ def find_most_recent_source(targets: dict[str, list[Path]]) -> Path | None:
 
 def strip_frontmatter(content: str) -> str:
     return re.sub(r"^---\s*\n.*?\n---\s*\n", "", content, flags=re.DOTALL)
-
-
-def format_command_path(path: Path) -> str:
-    path_str = str(path)
-    if " " in path_str:
-        return f'"{path_str}"'
-    return path_str
 
 
 def expand_template_variables(content: str) -> str:
