@@ -10,8 +10,12 @@ IGNORED_DIRS = {
     "build", ".ai_checkpoints", ".cache", ".pytest_cache",
 }
 
-# Standard exceptions for conventional short names
-ALLOWED_SINGLE_CHARS = {"_", "i", "j", "k", "x", "y", "z", "e", "f"}
+# Standard exceptions for conventional short names and engineering symbols
+ALLOWED_SINGLE_CHARS = {
+    "_", "i", "j", "k", "x", "y", "z", "e", "f", "m", "n", "p", "t", "v", "w",
+    "a", "b", "c", "d", "g", "h", "q", "r", "s", "u",
+    "T", "P", "A", "F", "V", "Q", "W", "H", "S", "U", "K", "L", "D", "R", "M",
+}
 
 VAGUE_NAMES = {
     "temp", "tmp", "data", "obj", "val", "res", "ret", "var", "foo",

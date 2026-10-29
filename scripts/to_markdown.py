@@ -26,17 +26,15 @@ import xml.etree.ElementTree as ET
 if hasattr(sys.stdout, "reconfigure"):
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
+    except OSError:
+        sys.stdout = sys.stdout
 
 
-# =====================================================================
 # PDF Extraction
-# =====================================================================
 def extract_pdf_pypdf(pdf_path: Path, max_pages: int | None = None) -> list[str]:
     """Extract text from PDF using pypdf or pdfplumber if installed."""
     try:
-        import pypdf
+        import pypdf  # noqa: 22
         reader = pypdf.PdfReader(str(pdf_path))
         pages_text: list[str] = []
         limit = min(len(reader.pages), max_pages) if max_pages else len(reader.pages)
@@ -45,10 +43,10 @@ def extract_pdf_pypdf(pdf_path: Path, max_pages: int | None = None) -> list[str]
             pages_text.append(t.strip())
         return pages_text
     except Exception:
-        pass
+        return []
 
     try:
-        import pdfplumber
+        import pdfplumber  # noqa: 22
         with pdfplumber.open(str(pdf_path)) as pdf:
             pages_text = []
             limit = min(len(pdf.pages), max_pages) if max_pages else len(pdf.pages)
@@ -57,7 +55,7 @@ def extract_pdf_pypdf(pdf_path: Path, max_pages: int | None = None) -> list[str]
                 pages_text.append(t.strip())
             return pages_text
     except Exception:
-        pass
+        return []
 
     return []
 
@@ -75,9 +73,9 @@ def extract_pdf_fallback(pdf_path: Path, max_pages: int | None = None) -> list[s
     streams = stream_pattern.findall(data)
 
     decompressed_chunks: list[str] = []
-    for s in streams:
+    for stream_bytes in streams:
         try:
-            decomp = zlib.decompress(s)
+            decomp = zlib.decompress(stream_bytes)
             # Extract text within parentheses in PDF text operators (TJ, Tj)
             text_matches = re.findall(rb"\((.*?)\)\s*T[jJ]", decomp)
             if text_matches:
@@ -101,7 +99,7 @@ def extract_pdf_fallback(pdf_path: Path, max_pages: int | None = None) -> list[s
         # Raw regex search for printable text strings
         strings = re.findall(rb"\(([A-Za-z0-9 .,:;!?/'\"()\-+=_]{3,})\)", data)
         if strings:
-            joined = " ".join(s.decode("latin1", errors="replace") for s in strings[:1000])
+            joined = " ".join(str_token.decode("latin1", errors="replace") for str_token in strings[:1000])
             pages_text.append(joined)
         else:
             pages_text.append("[PDF contains scanned images or encrypted text without readable fonts. Consider installing 'pypdf': pip install pypdf]")
@@ -123,9 +121,7 @@ def convert_pdf_to_md(pdf_path: Path, max_pages: int | None = None) -> str:
     return "\n".join(md_lines)
 
 
-# =====================================================================
 # Word Document (.docx) Extraction (100% Stdlib OpenXML)
-# =====================================================================
 def convert_docx_to_md(docx_path: Path) -> str:
     try:
         with zipfile.ZipFile(docx_path, "r") as z:
@@ -148,12 +144,12 @@ def convert_docx_to_md(docx_path: Path) -> str:
             # Collect text runs
             runs = elem.findall(".//w:r", ns)
             p_text = ""
-            for r in runs:
-                t_elem = r.find("w:t", ns)
+            for run_elem in runs:
+                t_elem = run_elem.find("w:t", ns)
                 if t_elem is not None and t_elem.text:
                     text_frag = t_elem.text
-                    is_bold = r.find("w:b", ns) is not None
-                    is_italic = r.find("w:i", ns) is not None
+                    is_bold = run_elem.find("w:b", ns) is not None
+                    is_italic = run_elem.find("w:i", ns) is not None
                     if is_bold and is_italic:
                         text_frag = f"***{text_frag}***"
                     elif is_bold:
@@ -204,9 +200,7 @@ def convert_docx_to_md(docx_path: Path) -> str:
     return "\n".join(md_lines)
 
 
-# =====================================================================
 # PowerPoint (.pptx) Extraction (100% Stdlib OpenXML)
-# =====================================================================
 def convert_pptx_to_md(pptx_path: Path, max_slides: int | None = None) -> str:
     try:
         with zipfile.ZipFile(pptx_path, "r") as z:
@@ -248,9 +242,7 @@ def convert_pptx_to_md(pptx_path: Path, max_slides: int | None = None) -> str:
         return f"# Error reading PPTX {pptx_path.name}: {e}\n"
 
 
-# =====================================================================
 # Excel (.xlsx) & CSV Extraction (100% Stdlib)
-# =====================================================================
 def convert_csv_to_md(csv_path: Path, max_rows: int = 50) -> str:
     md_lines: list[str] = [f"# {csv_path.name} (CSV)\n"]
     try:
@@ -264,8 +256,8 @@ def convert_csv_to_md(csv_path: Path, max_rows: int = 50) -> str:
         md_lines.append("| " + " | ".join(headers) + " |")
         md_lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
 
-        for r in rows[1 : max_rows + 1]:
-            padded = r + [""] * (len(headers) - len(r))
+        for row_cells in rows[1 : max_rows + 1]:
+            padded = row_cells + [""] * (len(headers) - len(row_cells))
             md_lines.append("| " + " | ".join(padded[: len(headers)]) + " |")
 
         if len(rows) > max_rows + 1:
@@ -298,19 +290,19 @@ def convert_xlsx_to_md(xlsx_path: Path, max_rows: int = 50) -> str:
                 sheet_tree = ET.fromstring(z.read(sname))
                 sheet_rows: list[list[str]] = []
 
-                for r in sheet_tree.findall(".//x:row", ns):
+                for row_node in sheet_tree.findall(".//x:row", ns):
                     cells: list[str] = []
-                    for c in r.findall(".//x:c", ns):
-                        t_type = c.attrib.get("t", "")
-                        v_elem = c.find("x:v", ns)
-                        val = ""
+                    for cell_node in row_node.findall(".//x:c", ns):
+                        t_type = cell_node.attrib.get("t", "")
+                        v_elem = cell_node.find("x:v", ns)
+                        cell_val = ""
                         if v_elem is not None and v_elem.text:
                             if t_type == "s" and v_elem.text.isdigit():
                                 idx = int(v_elem.text)
-                                val = shared_strings[idx] if idx < len(shared_strings) else v_elem.text
+                                cell_val = shared_strings[idx] if idx < len(shared_strings) else v_elem.text
                             else:
-                                val = v_elem.text
-                        cells.append(val)
+                                cell_val = v_elem.text
+                        cells.append(cell_val)
                     if cells:
                         sheet_rows.append(cells)
 
@@ -324,8 +316,8 @@ def convert_xlsx_to_md(xlsx_path: Path, max_rows: int = 50) -> str:
                 md_lines.append("| " + " | ".join(headers) + " |")
                 md_lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
 
-                for r in sheet_rows[1 : max_rows + 1]:
-                    padded = r + [""] * (len(headers) - len(r))
+                for sheet_row in sheet_rows[1 : max_rows + 1]:
+                    padded = row_cells + [""] * (len(headers) - len(row_cells))
                     md_lines.append("| " + " | ".join(padded[: len(headers)]) + " |")
 
                 if len(sheet_rows) > max_rows + 1:
@@ -337,9 +329,7 @@ def convert_xlsx_to_md(xlsx_path: Path, max_rows: int = 50) -> str:
         return f"# Error reading XLSX {xlsx_path.name}: {e}\n"
 
 
-# =====================================================================
 # Jupyter Notebook (.ipynb) Extraction
-# =====================================================================
 def convert_ipynb_to_md(ipynb_path: Path) -> str:
     try:
         content = json.loads(ipynb_path.read_text(encoding="utf-8", errors="replace"))
@@ -373,9 +363,7 @@ def convert_ipynb_to_md(ipynb_path: Path) -> str:
         return f"# Error reading IPYNB {ipynb_path.name}: {e}\n"
 
 
-# =====================================================================
 # HTML Extraction
-# =====================================================================
 class SimpleHTMLToMarkdown(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
@@ -420,9 +408,7 @@ def convert_html_to_md(html_path: Path) -> str:
         return f"# Error reading HTML {html_path.name}: {e}\n"
 
 
-# =====================================================================
 # Main Dispatcher
-# =====================================================================
 def convert_file_to_markdown(
     file_path: Path,
     max_pages: int | None = None,

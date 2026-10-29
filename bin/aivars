@@ -1,3 +1,7 @@
 #!/usr/bin/env sh
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-exec python3 "$SCRIPT_DIR/../scripts/check_variable_names.py" "$@"
+if command -v uv >/dev/null 2>&1; then
+    exec uv run --no-project python3 "$SCRIPT_DIR/../scripts/check_variable_names.py" "$@"
+else
+    exec python3 "$SCRIPT_DIR/../scripts/check_variable_names.py" "$@"
+fi

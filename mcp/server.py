@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """Standard Model Context Protocol (MCP) Server for Josh's AI Tools.
-Exposes the 35-rule linter, safe auto-fixer, symbol map generator, and encoding cleaner
+Exposes the 45-rule linter, safe auto-fixer, symbol map generator, and encoding cleaner
 directly as native MCP tools to Claude, Cursor, Windsurf, Cline, and Antigravity.
 """
+from __future__ import annotations
+
 import json
 import os
 import platform
+import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -35,7 +39,11 @@ VARS_SCRIPT = REPO_ROOT / "scripts" / "check_variable_names.py"
 SPELL_SCRIPT = REPO_ROOT / "scripts" / "spell_checker.py"
 
 IS_WINDOWS = platform.system() == "Windows"
-PYTHON_CMD = sys.executable or ("python" if IS_WINDOWS else "python3")
+BASE_CMD: list[str] = (
+    ["uv", "run", "--no-project", "python"]
+    if shutil.which("uv")
+    else [sys.executable or ("python" if IS_WINDOWS else "python3")]
+)
 
 
 def send_response(response: dict) -> None:
@@ -79,7 +87,7 @@ def resolve_cwd(arguments: dict, target_key: str = "target") -> Path | None:
 TOOLS = [
     {
         "name": "run_linter",
-        "description": "Run the 35-rule claudemd linter against code/markdown files to detect AI writing fluff, syntax, and GUI flaws.",
+        "description": "Run the 45-rule claudemd linter against code/markdown files to detect AI writing fluff, syntax, and GUI flaws.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -353,25 +361,30 @@ def handle_tool_call(name: str, arguments: dict) -> list[dict]:
 
     if name == "run_linter":
         target = arguments.get("target", ".")
-        cmd = [PYTHON_CMD, str(LINTER_SCRIPT), target]
+        cmd = BASE_CMD + [str(LINTER_SCRIPT), target]
         if arguments.get("diff_only"):
             cmd.append("--diff")
         if arguments.get("no_cache"):
             cmd.append("--no-cache")
         output = run_command_tool(cmd, cwd=effective_cwd)
-        # Also read the report file
-        report_file = REPO_ROOT / "scripts" / "lint_report.txt"
+        # Inspect project-specific report
+        target_path = Path(target)
+        project_root = (effective_cwd / target_path).resolve()
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", project_root.name) or "project"
+        report_file = REPO_ROOT / "scripts" / f"lint_report_{safe_name}.txt"
+        if not report_file.exists():
+            report_file = REPO_ROOT / "scripts" / "lint_report.txt"
         if report_file.exists():
             try:
                 report_content = report_file.read_text(encoding="utf-8")
                 output = f"{output}\n\n--- LINT REPORT ---\n{report_content}"
-            except Exception:
-                pass
+            except OSError:
+                return [{"type": "text", "text": output}]
         return [{"type": "text", "text": output}]
 
     elif name == "run_safe_fixer":
         target = arguments.get("target", ".")
-        cmd = [PYTHON_CMD, str(FIXER_SCRIPT), target]
+        cmd = BASE_CMD + [ str(FIXER_SCRIPT), target]
         if arguments.get("dry_run", False):
             cmd.append("--dry-run")
         if arguments.get("fix_emojis", False):
@@ -382,13 +395,13 @@ def handle_tool_call(name: str, arguments: dict) -> list[dict]:
     elif name == "get_symbol_map":
         target = arguments.get("target", ".")
         max_lines = str(arguments.get("max_lines", 300))
-        cmd = [PYTHON_CMD, str(REPO_MAP_SCRIPT), target, "--max-lines", max_lines]
+        cmd = BASE_CMD + [ str(REPO_MAP_SCRIPT), target, "--max-lines", max_lines]
         output = run_command_tool(cmd, cwd=effective_cwd)
         return [{"type": "text", "text": output}]
 
     elif name == "clean_mojibake":
         target = arguments.get("target", ".")
-        cmd = [PYTHON_CMD, str(ENCODING_SCRIPT), target]
+        cmd = BASE_CMD + [ str(ENCODING_SCRIPT), target]
         if arguments.get("dry_run", False):
             cmd.append("--dry-run")
         if arguments.get("degrees_to_word", False):
@@ -397,7 +410,7 @@ def handle_tool_call(name: str, arguments: dict) -> list[dict]:
         return [{"type": "text", "text": output}]
 
     elif name == "check_environment_health":
-        cmd = [PYTHON_CMD, str(DOCTOR_SCRIPT)]
+        cmd = BASE_CMD + [ str(DOCTOR_SCRIPT)]
         if arguments.get("heal", False):
             cmd.append("--heal")
         output = run_command_tool(cmd, cwd=effective_cwd)
@@ -405,7 +418,7 @@ def handle_tool_call(name: str, arguments: dict) -> list[dict]:
 
     elif name == "prune_dead_code":
         target = arguments.get("target", ".")
-        cmd = [PYTHON_CMD, str(PRUNE_SCRIPT), target]
+        cmd = BASE_CMD + [ str(PRUNE_SCRIPT), target]
         if arguments.get("fix", False):
             cmd.append("--fix")
         output = run_command_tool(cmd, cwd=effective_cwd)
@@ -413,7 +426,7 @@ def handle_tool_call(name: str, arguments: dict) -> list[dict]:
 
     elif name == "boost_type_annotations":
         target = arguments.get("target", ".")
-        cmd = [PYTHON_CMD, str(BOOST_SCRIPT), target]
+        cmd = BASE_CMD + [ str(BOOST_SCRIPT), target]
         if arguments.get("fix", False):
             cmd.append("--fix")
         if arguments.get("fallback_any", False):
@@ -423,7 +436,7 @@ def handle_tool_call(name: str, arguments: dict) -> list[dict]:
 
     elif name == "scan_hallucinated_dependencies":
         target = arguments.get("target", ".")
-        cmd = [PYTHON_CMD, str(DEPS_SCRIPT), target]
+        cmd = BASE_CMD + [ str(DEPS_SCRIPT), target]
         if arguments.get("strict", False):
             cmd.append("--strict")
         output = run_command_tool(cmd, cwd=effective_cwd)
@@ -431,7 +444,7 @@ def handle_tool_call(name: str, arguments: dict) -> list[dict]:
 
     elif name == "convert_to_markdown":
         target = arguments["target"]
-        cmd = [PYTHON_CMD, str(MARKDOWN_SCRIPT), target]
+        cmd = BASE_CMD + [ str(MARKDOWN_SCRIPT), target]
         if "max_pages" in arguments:
             cmd.extend(["--max-pages", str(arguments["max_pages"])])
         if "max_lines" in arguments:
@@ -443,7 +456,7 @@ def handle_tool_call(name: str, arguments: dict) -> list[dict]:
 
     elif name == "get_codebase_tree":
         target = arguments.get("target", ".")
-        cmd = [PYTHON_CMD, str(TREE_SCRIPT), target]
+        cmd = BASE_CMD + [ str(TREE_SCRIPT), target]
         if "depth" in arguments:
             cmd.extend(["--depth", str(arguments["depth"])])
         if "ext" in arguments:
@@ -456,7 +469,7 @@ def handle_tool_call(name: str, arguments: dict) -> list[dict]:
     elif name == "search_codebase":
         query = arguments["query"]
         target = arguments.get("target", ".")
-        cmd = [PYTHON_CMD, str(SEARCH_SCRIPT), query, target]
+        cmd = BASE_CMD + [ str(SEARCH_SCRIPT), query, target]
         if "context" in arguments:
             cmd.extend(["--context", str(arguments["context"])])
         if "ext" in arguments:
@@ -470,7 +483,7 @@ def handle_tool_call(name: str, arguments: dict) -> list[dict]:
 
     elif name == "slice_file_lines":
         target = arguments["target"]
-        cmd = [PYTHON_CMD, str(SLICE_SCRIPT), target]
+        cmd = BASE_CMD + [ str(SLICE_SCRIPT), target]
         if "range" in arguments:
             cmd.append(str(arguments["range"]))
         if "head" in arguments:
@@ -481,7 +494,7 @@ def handle_tool_call(name: str, arguments: dict) -> list[dict]:
         return [{"type": "text", "text": output}]
 
     elif name == "redact_git_diff":
-        cmd = [PYTHON_CMD, str(DIFF_SCRIPT)]
+        cmd = BASE_CMD + [ str(DIFF_SCRIPT)]
         if arguments.get("staged"):
             cmd.append("--staged")
         if "commit" in arguments:
@@ -495,14 +508,14 @@ def handle_tool_call(name: str, arguments: dict) -> list[dict]:
 
     elif name == "manage_checkpoints":
         action = arguments["action"]
-        cmd = [PYTHON_CMD, str(ROLLBACK_SCRIPT), action]
+        cmd = BASE_CMD + [ str(ROLLBACK_SCRIPT), action]
         if "name" in arguments and arguments["name"]:
             cmd.append(str(arguments["name"]))
         output = run_command_tool(cmd, cwd=effective_cwd)
         return [{"type": "text", "text": output}]
 
     elif name == "sync_rules":
-        cmd = [PYTHON_CMD, str(SYNC_SCRIPT)]
+        cmd = BASE_CMD + [ str(SYNC_SCRIPT)]
         if "source" in arguments:
             cmd.extend(["--source", str(arguments["source"])])
         if arguments.get("dry_run"):
@@ -511,7 +524,7 @@ def handle_tool_call(name: str, arguments: dict) -> list[dict]:
         return [{"type": "text", "text": output}]
 
     elif name == "smart_test_runner":
-        cmd = [PYTHON_CMD, str(TEST_RUNNER_SCRIPT)]
+        cmd = BASE_CMD + [ str(TEST_RUNNER_SCRIPT)]
         if arguments.get("all"):
             cmd.append("--all")
         if "runner" in arguments:
@@ -523,14 +536,14 @@ def handle_tool_call(name: str, arguments: dict) -> list[dict]:
 
     elif name == "analyze_token_budget":
         target = arguments.get("target", ".")
-        cmd = [PYTHON_CMD, str(TOKEN_BUDGET_SCRIPT), target]
+        cmd = BASE_CMD + [ str(TOKEN_BUDGET_SCRIPT), target]
         if "threshold" in arguments:
             cmd.extend(["--threshold", str(arguments["threshold"])])
         output = run_command_tool(cmd, cwd=effective_cwd)
         return [{"type": "text", "text": output}]
 
     elif name == "pack_context_bundle":
-        cmd = [PYTHON_CMD, str(PACK_CONTEXT_SCRIPT)]
+        cmd = BASE_CMD + [ str(PACK_CONTEXT_SCRIPT)]
         if arguments.get("diff"):
             cmd.append("--diff")
         if arguments.get("staged"):
@@ -544,14 +557,14 @@ def handle_tool_call(name: str, arguments: dict) -> list[dict]:
 
     elif name == "scan_secrets":
         target = arguments.get("target", ".")
-        cmd = [PYTHON_CMD, str(SECRET_SCRIPT), target]
+        cmd = BASE_CMD + [ str(SECRET_SCRIPT), target]
         if arguments.get("mask"):
             cmd.append("--mask")
         output = run_command_tool(cmd, cwd=effective_cwd)
         return [{"type": "text", "text": output}]
 
     elif name == "install_completion_hooks":
-        cmd = [PYTHON_CMD, str(HOOK_SCRIPT)]
+        cmd = BASE_CMD + [ str(HOOK_SCRIPT)]
         if "scope" in arguments:
             cmd.extend(["--scope", str(arguments["scope"])])
         if "event" in arguments:
@@ -563,13 +576,13 @@ def handle_tool_call(name: str, arguments: dict) -> list[dict]:
 
     elif name == "audit_variable_names":
         target = arguments.get("target", ".")
-        cmd = [PYTHON_CMD, str(VARS_SCRIPT), target]
+        cmd = BASE_CMD + [ str(VARS_SCRIPT), target]
         output = run_command_tool(cmd, cwd=effective_cwd)
         return [{"type": "text", "text": output}]
 
     elif name == "check_spelling":
         target = arguments.get("target", ".")
-        cmd = [PYTHON_CMD, str(SPELL_SCRIPT), target]
+        cmd = BASE_CMD + [ str(SPELL_SCRIPT), target]
         output = run_command_tool(cmd, cwd=effective_cwd)
         return [{"type": "text", "text": output}]
 

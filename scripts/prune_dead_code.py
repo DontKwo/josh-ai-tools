@@ -11,15 +11,24 @@ Guarantees 100% safety:
 """
 import ast
 import argparse
+import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import NamedTuple
 
 try:
-    import vulture
-    HAVE_VULTURE = True
+    import vulture  # noqa: 22
+    HAVE_VULTURE_MODULE = True
 except ImportError:
-    HAVE_VULTURE = False
+    HAVE_VULTURE_MODULE = False
+
+
+def is_vulture_available() -> bool:
+    if HAVE_VULTURE_MODULE or shutil.which("vulture"):
+        return True
+    return bool(shutil.which("uv"))
 
 
 class UnusedImport(NamedTuple):
@@ -143,31 +152,64 @@ def find_unused_imports(file_path: Path, preserve_init: bool = True) -> list[Unu
 
 
 def scan_dead_code_vulture(target: Path) -> list[DeadCodeItem]:
-    """Scan code using Vulture (if installed) to find unreachable code and dead symbols."""
-    if not HAVE_VULTURE:
+    if not is_vulture_available():
         return []
 
-    v = vulture.Vulture(verbose=False)
-    target_str = str(target)
-    v.scavenge([target_str])
+    if HAVE_VULTURE_MODULE:
+        v = vulture.Vulture(verbose=False)
+        target_str = str(target)
+        v.scavenge([target_str])
 
-    dead_items: list[DeadCodeItem] = []
-    for item in v.get_unused_code():
-        # Filter out imports (handled natively with 100% precision above)
-        if getattr(item, "typ", "") in ("import", "import_from"):
-            continue
-        item_path = Path(getattr(item, "filename", str(target)))
-        dead_items.append(
-            DeadCodeItem(
-                file_path=item_path,
-                line_number=getattr(item, "first_lineno", 1),
-                item_type=getattr(item, "typ", "symbol"),
-                name=getattr(item, "name", "unknown"),
-                confidence=getattr(item, "confidence", 60),
-                message=getattr(item, "message", ""),
+        dead_items: list[DeadCodeItem] = []
+        for item in v.get_unused_code():
+            if getattr(item, "typ", "") in ("import", "import_from"):
+                continue
+            item_path = Path(getattr(item, "filename", str(target)))
+            dead_items.append(
+                DeadCodeItem(
+                    file_path=item_path,
+                    line_number=getattr(item, "first_lineno", 1),
+                    item_type=getattr(item, "typ", "symbol"),
+                    name=getattr(item, "name", "unknown"),
+                    confidence=getattr(item, "confidence", 60),
+                    message=getattr(item, "message", ""),
+                )
             )
+        return dead_items
+
+    cmd: list[str] = []
+    if shutil.which("vulture"):
+        cmd = ["vulture", str(target)]
+    elif shutil.which("uv"):
+        cmd = ["uv", "tool", "run", "vulture", str(target)]
+
+    if not cmd:
+        return []
+
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        dead_items = []
+        pattern = re.compile(
+            r"^(.*?):(\d+):\s*(unused (?:function|method|class|variable|attribute|property) ['\"]?([^'\"]+)['\"]?.*?)(?:\((\d+)%\s*confidence\))?$",
+            re.IGNORECASE,
         )
-    return dead_items
+        for line in res.stdout.splitlines():
+            line_str = line.strip()
+            match = pattern.match(line_str)
+            if match:
+                dead_items.append(
+                    DeadCodeItem(
+                        file_path=Path(match.group(1)),
+                        line_number=int(match.group(2)),
+                        item_type="symbol",
+                        name=match.group(4),
+                        confidence=int(match.group(5) or 60),
+                        message=match.group(3).strip(),
+                    )
+                )
+        return dead_items
+    except OSError:
+        return []
 
 
 def prune_unused_imports_in_file(file_path: Path, dry_run: bool = True) -> tuple[int, list[str]]:
@@ -182,9 +224,9 @@ def prune_unused_imports_in_file(file_path: Path, dry_run: bool = True) -> tuple
 
     # Group unused symbols by statement (line_start, line_end)
     stmt_map: dict[tuple[int, int], list[UnusedImport]] = {}
-    for u in unused_list:
-        key = (u.line_start, u.line_end)
-        stmt_map.setdefault(key, []).append(u)
+    for unused_item in unused_list:
+        key = (unused_item.line_start, unused_item.line_end)
+        stmt_map.setdefault(key, []).append(unused_item)
 
     changes: list[str] = []
     # Process from bottom to top so line deletions don't invalidate higher line offsets
@@ -192,7 +234,7 @@ def prune_unused_imports_in_file(file_path: Path, dry_run: bool = True) -> tuple
 
     for (l_start, l_end) in sorted_stmt_keys:
         u_group = stmt_map[(l_start, l_end)]
-        u_symbols = {u.asname or u.symbol for u in u_group}
+        u_symbols = {unused_item.asname or unused_item.symbol for unused_item in u_group}
         all_syms = u_group[0].all_symbols_in_stmt
         is_from = u_group[0].is_from_import
         mod = u_group[0].module
@@ -206,7 +248,7 @@ def prune_unused_imports_in_file(file_path: Path, dry_run: bool = True) -> tuple
                 del lines[l_start - 1 : l_end]
         else:
             # Some symbols are used, some are unused. Rewrite keeping only used symbols
-            kept_syms = [s for s in all_syms if s not in u_symbols]
+            kept_syms = [symbol_name for symbol_name in all_syms if symbol_name not in u_symbols]
             changes.append(
                 f"Line {l_start}: Pruned unused [{', '.join(u_symbols)}] from import ({mod or 'import'})"
             )
@@ -264,21 +306,21 @@ def scan_directory(
         if unused:
             total_unused_imports += len(unused)
             print(f"File: {pf}")
-            for u in unused:
-                asname_str = f" as {u.asname}" if u.asname else ""
-                print(f"  Line {u.line_start}: Unused import '{u.symbol}{asname_str}' (module: {u.module or u.symbol})")
+            for unused_item in unused:
+                asname_str = f" as {unused_item.asname}" if unused_item.asname else ""
+                print(f"  Line {unused_item.line_start}: Unused import '{unused_item.symbol}{asname_str}' (module: {unused_item.module or unused_item.symbol})")
 
             if fix:
                 count, changes = prune_unused_imports_in_file(pf, dry_run=False)
                 if count:
                     total_files_changed += 1
-                    for c in changes:
-                        print(f"    [APPLIED] {c}")
+                    for change_item in changes:
+                        print(f"    [APPLIED] {change_item}")
             print()
 
     # Vulture Dead Code Scanning
     dead_code_count = 0
-    if include_vulture and HAVE_VULTURE:
+    if include_vulture and is_vulture_available():
         print("Checking dead functions, methods, and classes via Vulture...")
         dead_items = scan_dead_code_vulture(target)
         if dead_items:
@@ -292,14 +334,14 @@ def scan_directory(
             print("Note: Dead functions/classes require human architectural review; never pruned automatically.\n")
         else:
             print("Vulture: No dead functions or classes found.\n")
-    elif include_vulture and not HAVE_VULTURE:
-        print("Tip: Install 'vulture' (`pip install vulture`) for dead function/class detection.\n")
+    elif include_vulture and not is_vulture_available():
+        print("Tip: Install 'vulture' (`uv tool install vulture`) for dead function/class detection.\n")
 
     print(f"Summary:")
     print(f"  Unused imports found: {total_unused_imports}")
     if fix:
         print(f"  Files safely updated: {total_files_changed}")
-    if HAVE_VULTURE:
+    if is_vulture_available():
         print(f"  Dead code candidates: {dead_code_count}")
 
     return total_unused_imports, dead_code_count

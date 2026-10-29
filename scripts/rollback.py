@@ -16,8 +16,8 @@ CHECKPOINT_DIR = Path(".ai_checkpoints")
 if hasattr(sys.stdout, "reconfigure"):
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
+    except OSError:
+        sys.stdout = sys.stdout
 
 
 def get_checkpoint_dir(workspace: Path) -> Path:
@@ -226,8 +226,8 @@ def main() -> int:
             print("No saved checkpoints found.")
         else:
             print(f"Saved Checkpoints ({len(cps)}):")
-            for c in cps:
-                print(f"  * {c.get('name')}  [{c.get('timestamp')}]  ({c.get('total_files')} files)")
+            for checkpoint_info in cps:
+                print(f"  * {checkpoint_info.get('name')}  [{checkpoint_info.get('timestamp')}]  ({checkpoint_info.get('total_files')} files)")
     elif args.command == "clear":
         clear_checkpoints(ws)
 

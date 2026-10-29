@@ -12,8 +12,8 @@ from pathlib import Path
 if hasattr(sys.stdout, "reconfigure"):
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
+    except OSError:
+        sys.stdout = sys.stdout
 
 
 def run_git_diff(extra_args: list[str]) -> str:

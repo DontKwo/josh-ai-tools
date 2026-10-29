@@ -27,10 +27,10 @@ def mask_secrets(text: str) -> str:
     masked = text
     for name, pattern in SECRET_PATTERNS:
         def repl(match: re.Match) -> str:
-            val = match.group(0)
-            if len(val) <= 8:
+            matched_val = match.group(0)
+            if len(matched_val) <= 8:
                 return "[REDACTED]"
-            return val[:4] + "..." + val[-4:] + f"[{name}]"
+            return matched_val[:4] + "..." + matched_val[-4:] + f"[{name}]"
         masked = pattern.sub(repl, masked)
     return masked
 

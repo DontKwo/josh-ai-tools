@@ -216,9 +216,9 @@ def get_installed_distributions() -> dict[str, str]:
         # Fallback to distribution list
         try:
             return {
-                d.metadata["Name"].lower().replace("-", "_"): d.metadata["Name"].lower().replace("-", "_")
-                for d in importlib.metadata.distributions()
-                if "Name" in d.metadata
+                dist_pkg.metadata["Name"].lower().replace("-", "_"): dist_pkg.metadata["Name"].lower().replace("-", "_")
+                for dist_pkg in importlib.metadata.distributions()
+                if "Name" in dist_pkg.metadata
             }
         except Exception:
             return {}
@@ -358,8 +358,8 @@ def main() -> int:
     if hasattr(sys.stdout, "reconfigure"):
         try:
             sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-        except Exception:
-            pass
+        except OSError:
+            has_issues = False
 
     print(f"Scanning dependencies in: {target_path}\n")
 

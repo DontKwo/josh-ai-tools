@@ -2,27 +2,31 @@
 """Configures AI developer tools (Claude, Cursor, Cline, Antigravity, Codex, etc.)
 with Josh's unified style rules and automated AST linter instructions.
 """
+from __future__ import annotations
+
 import argparse
 import json
 import os
 import platform
+import re
+import shutil
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_PATH = REPO_ROOT / "templates" / "INSTRUCTIONS_TEMPLATE.md"
+ENGINEERING_PATH = REPO_ROOT / "templates" / "ENGINEERING_RULES.md"
+PYTHON_RULES_PATH = REPO_ROOT / "templates" / "PYTHON_RULES.md"
 LINTER_SCRIPT = REPO_ROOT / "scripts" / "claudemd_linter.py"
-REPORT_PATH = REPO_ROOT / "scripts" / "lint_report.txt"
 
 IS_WINDOWS = platform.system() == "Windows"
-PYTHON_CMD = "python" if IS_WINDOWS else "python3"
 
 
 def get_user_home() -> Path:
     return Path(os.environ.get("USERPROFILE" if IS_WINDOWS else "HOME", Path.home()))
 
 
-# Registry of supported AI tools and their target file paths
+# Registry of supported AI tools and target paths
 def get_tool_definitions(workspace: Path | None = None) -> dict[str, dict]:
     home = get_user_home()
     ws = workspace or Path.cwd()
@@ -36,10 +40,13 @@ def get_tool_definitions(workspace: Path | None = None) -> dict[str, dict]:
         },
         "cursor": {
             "name": "Cursor IDE",
-            "global_paths": [home / ".cursorrules"],
+            "global_paths": [
+                home / ".cursor" / "rules" / "josh-rules.mdc",
+                home / ".cursorrules",
+            ],
             "workspace_paths": [
-                ws / ".cursorrules",
                 ws / ".cursor" / "rules" / "josh-rules.mdc",
+                ws / ".cursorrules",
             ],
             "frontmatter": "---\ndescription: Josh AI Development and Linting Rules\nglobs: *\nalwaysApply: true\n---\n\n",
         },
@@ -54,21 +61,18 @@ def get_tool_definitions(workspace: Path | None = None) -> dict[str, dict]:
             "global_paths": [
                 home / ".gemini" / "config" / "AGENTS.md",
                 home / ".gemini" / "antigravity" / "rules" / "josh_rules.md",
-                home / "GEMINI.md",
-                home / "AGENTS.md",
             ],
             "workspace_paths": [
-                ws / "GEMINI.md",
                 ws / "AGENTS.md",
-                ws / ".agents" / "rules" / "josh_rules.md",
                 ws / ".agent" / "rules" / "josh_rules.md",
+                ws / ".agents" / "rules" / "josh_rules.md",
             ],
             "frontmatter": "",
         },
         "codex": {
             "name": "OpenAI Codex & ChatGPT",
             "global_paths": [home / ".codex" / "instructions.md"],
-            "workspace_paths": [ws / "AGENTS.md", ws / "OPENAI.md"],
+            "workspace_paths": [ws / "AGENTS.md"],
             "frontmatter": "",
         },
         "windsurf": {
@@ -99,22 +103,36 @@ def format_command_path(path: Path) -> str:
     return path_str
 
 
+def calc_linter_command() -> str:
+    script_str = format_command_path(LINTER_SCRIPT)
+    if shutil.which("uv"):
+        return f"uv run --no-project python {script_str}"
+    py_bin = "python" if IS_WINDOWS else "python3"
+    return f"{py_bin} {script_str}"
+
+
 def build_instructions(frontmatter: str = "") -> str:
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
-    linter_cmd = f"{PYTHON_CMD} {format_command_path(LINTER_SCRIPT)}"
-    report_file = format_command_path(REPORT_PATH)
+    linter_cmd = calc_linter_command()
+    eng_path = format_command_path(ENGINEERING_PATH)
+    py_rules_path = format_command_path(PYTHON_RULES_PATH)
 
     content = template.replace("{{LINTER_COMMAND}}", linter_cmd)
-    content = content.replace("{{REPORT_PATH}}", report_file)
+    content = content.replace("{{ENGINEERING_RULES_PATH}}", eng_path)
+    content = content.replace("{{PYTHON_RULES_PATH}}", py_rules_path)
     if frontmatter:
         content = frontmatter + content
     return content
 
 
-def install_file(dest: Path, content: str, default_action: str = "ask") -> None:
+def install_file(dest: Path, content: str, default_action: str = "ask", dry_run: bool = False) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     action = default_action
+    begin_marker = "<!-- BEGIN JOSH-AI-TOOLS -->"
+    end_marker = "<!-- END JOSH-AI-TOOLS -->"
+    bounded_content = f"{begin_marker}\n{content}\n{end_marker}"
+
     if dest.exists():
         if action == "ask":
             print(f"\n[!] File already exists: {dest}")
@@ -138,21 +156,75 @@ def install_file(dest: Path, content: str, default_action: str = "ask") -> None:
             print(f"[-] Skipped: {dest}")
             return
         if action == "append":
-            append_block = f"\n\n# --- Appended by josh-ai-tools ---\n{content}"
-            with open(dest, "a", encoding="utf-8") as f:
-                f.write(append_block)
+            if dry_run:
+                print(f"[DRY-RUN] Would append bounded block to: {dest}")
+                return
+            existing = dest.read_text(encoding="utf-8")
+            if begin_marker in existing and end_marker in existing:
+                pattern = rf"{re.escape(begin_marker)}.*?{re.escape(end_marker)}"
+                updated = re.sub(pattern, bounded_content, existing, flags=re.DOTALL)
+            else:
+                updated = existing.rstrip() + f"\n\n{bounded_content}\n"
+            dest.write_text(updated, encoding="utf-8")
             print(f"[+] Appended instructions to: {dest}")
             return
         if action == "overwrite":
+            if dry_run:
+                print(f"[DRY-RUN] Would overwrite: {dest}")
+                return
             dest.write_text(content, encoding="utf-8")
             print(f"[+] Overwrote: {dest}")
             return
     else:
+        if dry_run:
+            print(f"[DRY-RUN] Would create: {dest}")
+            return
         dest.write_text(content, encoding="utf-8")
         print(f"[+] Created: {dest}")
 
 
-def configure_tools(selected_tools: list[str], scope: str, workspace: Path, action: str) -> None:
+def remove_tool_targets(selected_tools: list[str], scope: str, workspace: Path, dry_run: bool = False) -> None:
+    tool_defs = get_tool_definitions(workspace)
+    begin_marker = "<!-- BEGIN JOSH-AI-TOOLS -->"
+    end_marker = "<!-- END JOSH-AI-TOOLS -->"
+
+    for tool_key in selected_tools:
+        if tool_key not in tool_defs:
+            continue
+        defn = tool_defs[tool_key]
+        targets: list[Path] = []
+        if scope in ("global", "both"):
+            targets.extend(defn["global_paths"])
+        if scope in ("workspace", "both"):
+            targets.extend(defn["workspace_paths"])
+
+        for target in targets:
+            if not target.is_file():
+                continue
+            text = target.read_text(encoding="utf-8", errors="replace")
+            if begin_marker in text and end_marker in text:
+                pattern = rf"\n*{re.escape(begin_marker)}.*?{re.escape(end_marker)}\n*"
+                cleaned = re.sub(pattern, "", text, flags=re.DOTALL)
+                if dry_run:
+                    print(f"[DRY-RUN] Would remove josh-ai-tools block from: {target}")
+                else:
+                    target.write_text(cleaned, encoding="utf-8")
+                    print(f"[OK] Removed josh-ai-tools block from: {target}")
+            elif "claudemd_linter" in text or "josh-ai-tools" in text:
+                if dry_run:
+                    print(f"[DRY-RUN] Would delete: {target}")
+                else:
+                    target.unlink()
+                    print(f"[OK] Deleted: {target}")
+
+
+def configure_tools(
+    selected_tools: list[str],
+    scope: str,
+    workspace: Path,
+    action: str,
+    dry_run: bool = False,
+) -> None:
     tool_defs = get_tool_definitions(workspace)
 
     for tool_key in selected_tools:
@@ -170,14 +242,16 @@ def configure_tools(selected_tools: list[str], scope: str, workspace: Path, acti
             targets.extend(defn["workspace_paths"])
 
         if not targets:
-            print(f"[-] No target paths configured for {defn['name']} under scope '{scope}'.")
+            if scope == "global" and not defn["global_paths"]:
+                print(f"[-] Note: {defn['name']} is workspace-only (configure with --scope workspace).")
+            else:
+                print(f"[-] No target paths configured for {defn['name']} under scope '{scope}'.")
             continue
 
         for target in targets:
-            # Check if target requires frontmatter (e.g. Cursor MDC)
             frontmatter = defn["frontmatter"] if target.suffix == ".mdc" else ""
             content = build_instructions(frontmatter)
-            install_file(target, content, default_action=action)
+            install_file(target, content, default_action=action, dry_run=dry_run)
 
 
 def configure_mcp_servers(
@@ -185,6 +259,8 @@ def configure_mcp_servers(
     scope: str = "global",
     workspace: Path | None = None,
     tools: list[str] | None = None,
+    dry_run: bool = False,
+    remove: bool = False,
 ) -> None:
     home = get_user_home()
     ws = workspace or Path.cwd()
@@ -192,13 +268,20 @@ def configure_mcp_servers(
 
     print("\n>>> Configuring Model Context Protocol (MCP) Servers...")
 
-    server_cmd = sys.executable or ("python" if IS_WINDOWS else "python3")
-    base_entry: dict = {
-        "command": server_cmd,
-        "args": [str(mcp_script)],
-    }
+    uv_bin = shutil.which("uv")
+    if uv_bin:
+        resolved_uv = str(Path(uv_bin).resolve())
+        base_entry: dict = {
+            "command": resolved_uv,
+            "args": ["run", "--no-project", "python", str(mcp_script)],
+        }
+    else:
+        server_cmd = sys.executable or ("python" if IS_WINDOWS else "python3")
+        base_entry = {
+            "command": server_cmd,
+            "args": [str(mcp_script)],
+        }
 
-    # Map tools to their MCP config locations
     configs: list[tuple[str, Path, dict]] = []
 
     # 1. Claude Desktop & Claude Code
@@ -265,14 +348,14 @@ def configure_mcp_servers(
         if scope in ("global", "both"):
             configs.append(
                 (
-                    "Google Antigravity (Global - ~/.gemini/config)",
+                    "Google Antigravity (Global Config)",
                     home / ".gemini" / "config" / "mcp_config.json",
                     dict(base_entry),
                 )
             )
             configs.append(
                 (
-                    "Google Antigravity (Global - ~/.gemini/antigravity)",
+                    "Google Antigravity (App Storage)",
                     home / ".gemini" / "antigravity" / "mcp_config.json",
                     dict(base_entry),
                 )
@@ -280,8 +363,8 @@ def configure_mcp_servers(
         if scope in ("workspace", "both"):
             configs.append(
                 (
-                    "Google Antigravity (Workspace)",
-                    ws / ".gemini" / "mcp_config.json",
+                    "Google Antigravity (Workspace .agent)",
+                    ws / ".agent" / "mcp_config.json",
                     dict(base_entry),
                 )
             )
@@ -295,14 +378,41 @@ def configure_mcp_servers(
 
     configured_count = 0
     for name, path, entry in configs:
+        if remove:
+            if not path.is_file():
+                continue
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+                if "mcpServers" in data and "josh-ai-tools" in data["mcpServers"]:
+                    del data["mcpServers"]["josh-ai-tools"]
+                    if dry_run:
+                        print(f"[DRY-RUN] Would remove MCP server entry from {name}: {path}")
+                    else:
+                        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                        print(f"[OK] Removed MCP server from {name}: {path}")
+            except OSError:
+                continue
+            continue
+
         try:
+            if dry_run:
+                print(f"[DRY-RUN] Would configure MCP for {name} -> {path}")
+                configured_count += 1
+                continue
+
             path.parent.mkdir(parents=True, exist_ok=True)
             data: dict = {}
             if path.is_file():
                 try:
                     data = json.loads(path.read_text(encoding="utf-8"))
-                except Exception:
-                    data = {}
+                except Exception as err:
+                    print(f"[!] Warning: Could not parse {path} as valid JSON ({err}). Skipping to prevent corruption.")
+                    continue
+                try:
+                    backup_path = path.with_suffix(path.suffix + ".bak")
+                    backup_path.write_bytes(path.read_bytes())
+                except OSError:
+                    backup_path = None
 
             if "mcpServers" not in data or not isinstance(data["mcpServers"], dict):
                 data["mcpServers"] = {}
@@ -311,16 +421,15 @@ def configure_mcp_servers(
             path.write_text(json.dumps(data, indent=2), encoding="utf-8")
             print(f"[OK] Configured MCP server for {name} -> {path}")
             configured_count += 1
-        except Exception as e:
-            print(f"[!] Note: Could not configure MCP for {name} ({e})")
+        except OSError as err:
+            print(f"[!] Note: Could not configure MCP for {name} ({err})")
 
-    print(f"[+] Total MCP configs updated: {configured_count}")
+    if not remove:
+        print(f"[+] Total MCP configs updated: {configured_count}")
 
 
 def interactive_menu() -> tuple[list[str], str, Path, bool]:
-    print("=" * 60)
-    print("        Josh's AI Tools Unified Configurator")
-    print("=" * 60)
+    print("Josh AI Tools Configurator")
     print(f"Repo directory: {REPO_ROOT}")
     print(f"Linter script:  {LINTER_SCRIPT}")
     print("")
@@ -330,8 +439,8 @@ def interactive_menu() -> tuple[list[str], str, Path, bool]:
 
     print("Supported AI Tools:")
     print("  0) [ALL] Configure all supported AI tools")
-    for i, key in enumerate(keys, 1):
-        print(f"  {i}) {tool_defs[key]['name']} ({key})")
+    for idx, key in enumerate(keys, 1):
+        print(f"  {idx}) {tool_defs[key]['name']} ({key})")
     print("")
 
     selection = input(f"Select tools to configure [0-{len(keys)} or comma-separated, default 0]: ").strip()
@@ -340,19 +449,19 @@ def interactive_menu() -> tuple[list[str], str, Path, bool]:
     else:
         selected = []
         for part in selection.split(","):
-            part = part.strip()
-            if part.isdigit():
-                idx = int(part) - 1
-                if 0 <= idx < len(keys):
-                    selected.append(keys[idx])
-            elif part in tool_defs:
-                selected.append(part)
+            part_str = part.strip()
+            if part_str.isdigit():
+                num_idx = int(part_str) - 1
+                if 0 <= num_idx < len(keys):
+                    selected.append(keys[num_idx])
+            elif part_str in tool_defs:
+                selected.append(part_str)
         if not selected:
             selected = keys
 
     print(f"\nSelected tools: {', '.join(selected)}")
     print("\nConfiguration Scope:")
-    print("  1) Global (user profile directories, e.g. ~/.claude/, ~/.cursorrules)")
+    print("  1) Global (user profile directories)")
     print("  2) Workspace (current or specified project directory)")
     print("  3) Both (global defaults + local workspace files)")
     scope_choice = input("Select scope [1-3, default 1]: ").strip()
@@ -400,33 +509,45 @@ def main() -> None:
         action="store_true",
         help="Skip automatic configuration of Model Context Protocol (MCP) servers.",
     )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Preview actions without modifying files.",
+    )
+    parser.add_argument(
+        "--remove",
+        action="store_true",
+        help="Remove configured rules and MCP servers for selected tools.",
+    )
     args = parser.parse_args()
 
     tool_defs = get_tool_definitions(args.workspace)
 
     if not args.tools and len(sys.argv) == 1:
-        # Run interactive wizard
         selected, scope, workspace, setup_mcp = interactive_menu()
-        configure_tools(selected, scope, workspace, args.action)
+        configure_tools(selected, scope, workspace, args.action, dry_run=args.dry_run)
         if setup_mcp:
-            configure_mcp_servers(REPO_ROOT, scope, workspace, selected)
+            configure_mcp_servers(REPO_ROOT, scope, workspace, selected, dry_run=args.dry_run)
     else:
         tools_arg = args.tools or "all"
         if tools_arg.strip().lower() == "all":
             selected = list(tool_defs.keys())
         else:
             selected = [t.strip().lower() for t in tools_arg.split(",") if t.strip()]
-        configure_tools(selected, args.scope, args.workspace, args.action)
-        if not args.no_mcp:
-            configure_mcp_servers(REPO_ROOT, args.scope, args.workspace, selected)
 
-    print("\n" + "=" * 60)
-    print("Configuration finished! All AI tools now reference:")
+        if args.remove:
+            remove_tool_targets(selected, args.scope, args.workspace, dry_run=args.dry_run)
+            configure_mcp_servers(REPO_ROOT, args.scope, args.workspace, selected, dry_run=args.dry_run, remove=True)
+            return
+
+        configure_tools(selected, args.scope, args.workspace, args.action, dry_run=args.dry_run)
+        if not args.no_mcp:
+            configure_mcp_servers(REPO_ROOT, args.scope, args.workspace, selected, dry_run=args.dry_run)
+
+    print("Configuration finished! All AI tools reference:")
     print(f"  Linter: {LINTER_SCRIPT}")
-    print(f"  Report: {REPORT_PATH}")
-    print("=" * 60 + "\n")
+    print(f"  Rules:  {ENGINEERING_PATH}")
 
 
 if __name__ == "__main__":
     main()
-

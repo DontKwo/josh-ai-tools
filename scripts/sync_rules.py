@@ -1,12 +1,20 @@
 #!/usr/bin/env python3
 """Synchronize AI rule files across Claude, Gemini, Cursor, Cline, and Codex."""
+from __future__ import annotations
+
 import argparse
 import os
 import platform
+import re
+import shutil
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+TEMPLATE_PATH = REPO_ROOT / "templates" / "INSTRUCTIONS_TEMPLATE.md"
+ENGINEERING_PATH = REPO_ROOT / "templates" / "ENGINEERING_RULES.md"
+PYTHON_RULES_PATH = REPO_ROOT / "templates" / "PYTHON_RULES.md"
+LINTER_SCRIPT = REPO_ROOT / "scripts" / "claudemd_linter.py"
 IS_WINDOWS = platform.system() == "Windows"
 
 
@@ -18,20 +26,24 @@ def get_rule_targets(ws: Path) -> dict[str, list[Path]]:
     home = get_user_home()
     return {
         "claude": [home / ".claude" / "CLAUDE.md", ws / "CLAUDE.md"],
-        "gemini": [
+        "antigravity": [
             home / ".gemini" / "config" / "AGENTS.md",
-            home / "GEMINI.md",
-            ws / "GEMINI.md",
+            home / ".gemini" / "antigravity" / "rules" / "josh_rules.md",
             ws / "AGENTS.md",
+            ws / ".agent" / "rules" / "josh_rules.md",
             ws / ".agents" / "rules" / "josh_rules.md",
         ],
         "cursor": [
+            home / ".cursor" / "rules" / "josh-rules.mdc",
             home / ".cursorrules",
-            ws / ".cursorrules",
             ws / ".cursor" / "rules" / "josh-rules.mdc",
+            ws / ".cursorrules",
         ],
         "cline": [home / ".clinerules", ws / ".clinerules"],
-        "codex": [home / ".codex" / "instructions.md", ws / "OPENAI.md"],
+        "codex": [home / ".codex" / "instructions.md", ws / "AGENTS.md"],
+        "windsurf": [home / ".windsurfrules", ws / ".windsurfrules"],
+        "copilot": [ws / ".github" / "copilot-instructions.md"],
+        "aider": [home / ".aider.conventions.md", ws / ".aider.conventions.md"],
     }
 
 
@@ -49,22 +61,35 @@ def find_most_recent_source(targets: dict[str, list[Path]]) -> Path | None:
 
 
 def strip_frontmatter(content: str) -> str:
-    if content.startswith("---"):
-        parts = content.split("---", 2)
-        if len(parts) >= 3:
-            return parts[2].lstrip()
-    return content
+    return re.sub(r"^---\s*\n.*?\n---\s*\n", "", content, flags=re.DOTALL)
+
+
+def format_command_path(path: Path) -> str:
+    path_str = str(path)
+    if " " in path_str:
+        return f'"{path_str}"'
+    return path_str
 
 
 def expand_template_variables(content: str) -> str:
-    linter_cmd = f"python {REPO_ROOT / 'scripts' / 'claudemd_linter.py'}"
-    report_path = f"{REPO_ROOT / 'scripts' / 'lint_report.txt'}"
-    return content.replace("{{LINTER_COMMAND}}", linter_cmd).replace("{{REPORT_PATH}}", report_path)
+    linter_str = format_command_path(LINTER_SCRIPT)
+    if shutil.which("uv"):
+        linter_cmd = f"uv run --no-project python {linter_str}"
+    else:
+        py_bin = "python" if IS_WINDOWS else "python3"
+        linter_cmd = f"{py_bin} {linter_str}"
+
+    eng_path = format_command_path(ENGINEERING_PATH)
+    py_rules_path = format_command_path(PYTHON_RULES_PATH)
+    expanded = content.replace("{{LINTER_COMMAND}}", linter_cmd)
+    expanded = expanded.replace("{{ENGINEERING_RULES_PATH}}", eng_path)
+    expanded = expanded.replace("{{PYTHON_RULES_PATH}}", py_rules_path)
+    return expanded.replace("<project_root>", ".")
 
 
 def format_for_target(target: Path, core_content: str) -> str:
     expanded = expand_template_variables(core_content)
-    if target.suffix == ".mdc" or target.name == ".cursorrules":
+    if target.suffix == ".mdc":
         header = "---\ndescription: Josh AI Development and Linting Rules\nglobs: *\nalwaysApply: true\n---\n\n"
         return header + expanded
     return expanded
@@ -72,7 +97,13 @@ def format_for_target(target: Path, core_content: str) -> str:
 
 def sync_rules(source: Path | None, ws: Path, dry_run: bool) -> int:
     targets = get_rule_targets(ws)
-    src_file = source or find_most_recent_source(targets)
+    if source is not None:
+        src_file = source
+    elif TEMPLATE_PATH.is_file():
+        src_file = TEMPLATE_PATH
+    else:
+        src_file = find_most_recent_source(targets)
+
     if src_file is None or not src_file.is_file():
         sys.stderr.write("No existing rule file found to synchronize from.\n")
         return 1
@@ -81,10 +112,13 @@ def sync_rules(source: Path | None, ws: Path, dry_run: bool) -> int:
     core_rules = strip_frontmatter(raw_text)
 
     synced_count = 0
+    seen_paths: set[Path] = set()
     for tool_name, paths in targets.items():
         for dest in paths:
-            if dest.resolve() == src_file.resolve():
+            resolved_dest = dest.resolve()
+            if resolved_dest in seen_paths or resolved_dest == src_file.resolve():
                 continue
+            seen_paths.add(resolved_dest)
             if not dest.parent.exists() and not dest.exists():
                 continue
             new_text = format_for_target(dest, core_rules)
@@ -115,4 +149,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

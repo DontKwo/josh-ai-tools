@@ -15,8 +15,8 @@ MOJIBAKE_MAP = {
     "â€\x9d": '"',    # Right double quotation mark
     "â€\x9c": '"',
     "â€¦": "...",     # Ellipsis
-    "â€“": "-",       # En dash
-    "â€”": "-",       # Em dash
+    "â€“": "-",       # En dash  # noqa: 2
+    "â€”": "-",       # Em dash  # noqa: 1, 2
     "Â°": "°",        # Degree sign
     "Â±": "±",        # Plus-minus sign
     "Â©": "©",        # Copyright sign
@@ -92,8 +92,8 @@ def process_file(path: Path, dry_run: bool, degrees_to_word: bool) -> int:
 
     if changes:
         print(f"\n{path}:")
-        for c in changes:
-            print(f"  [+] {c}")
+        for change_item in changes:
+            print(f"  [+] {change_item}")
 
         if not dry_run:
             path.write_text(new_content, encoding="utf-8")

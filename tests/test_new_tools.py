@@ -61,7 +61,7 @@ class TestNewTools(unittest.TestCase):
         self.assertEqual(len(scan_file(clean_file)), 0)
 
     def test_antigravity_completion_hook(self) -> None:
-        hook_path = self.temp_dir / ".agents" / "hooks.json"
+        hook_path = self.temp_dir / ".agent" / "hooks.json"
         config = build_hook_config("python lint.py", "PostInvocation")
         self.assertIn("PostInvocation", config["josh-linter-completion-guard"])
 
@@ -83,10 +83,29 @@ class TestNewTools(unittest.TestCase):
 
     def test_spell_checker(self) -> None:
         from scripts.spell_checker import check_line_spelling
-        hits = check_line_spelling("We must recieve the seperate files.")
+        hits = check_line_spelling("We must recieve the seperate files.")  # noqa: 39
         wrong_words = [w.lower() for w, _ in hits]
-        self.assertIn("recieve", wrong_words)
-        self.assertIn("seperate", wrong_words)
+        self.assertIn("recieve", wrong_words)  # noqa: 39
+        self.assertIn("seperate", wrong_words)  # noqa: 39
+
+    def test_find_venv_python(self) -> None:
+        import platform
+        from scripts.smart_test_runner import find_venv_python
+        is_win = platform.system() == "Windows"
+        rel_dir = "Scripts" if is_win else "bin"
+        exe_name = "python.exe" if is_win else "python"
+
+        venv_dir = self.temp_dir / ".venv" / rel_dir
+        venv_dir.mkdir(parents=True, exist_ok=True)
+        fake_py = venv_dir / exe_name
+        fake_py.write_text("", encoding="utf-8")
+
+        sub_dir = self.temp_dir / "sub" / "deep"
+        sub_dir.mkdir(parents=True, exist_ok=True)
+        found = find_venv_python(sub_dir)
+        self.assertIsNotNone(found)
+        if found:
+            self.assertEqual(found.resolve(), fake_py.resolve())
 
 
 if __name__ == "__main__":

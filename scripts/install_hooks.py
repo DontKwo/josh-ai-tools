@@ -2,6 +2,8 @@
 """Installs or uninstalls Git pre-commit enforcement hooks.
 Ensures claudemd_linter.py is executed automatically on staged files before commit.
 """
+from __future__ import annotations
+
 import argparse
 import platform
 import stat
@@ -15,14 +17,18 @@ PYTHON_CMD = "python" if IS_WINDOWS else "python3"
 
 
 def create_hook_content() -> str:
-    # Git hooks always run under a POSIX sh environment, even on Git for Windows
+    # Git hooks run in POSIX sh shell environment
     linter_posix = str(LINTER_SCRIPT).replace("\\", "/")
     return f"""#!/usr/bin/env sh
 # Pre-commit hook installed by josh-ai-tools
 # Runs claudemd_linter on staged files before allowing commit
 
 echo "Running claudemd_linter on staged files..."
-{PYTHON_CMD} "{linter_posix}" --staged
+if command -v uv >/dev/null 2>&1; then
+    uv run --no-project python "{linter_posix}" --staged
+else
+    {PYTHON_CMD} "{linter_posix}" --staged
+fi
 
 if [ $? -ne 0 ]; then
     echo ""
@@ -83,8 +89,8 @@ def install_hook(target_repo: Path, action: str = "ask") -> None:
     # Ensure executable permissions on POSIX systems
     try:
         hook_file.chmod(hook_file.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-    except Exception:
-        pass
+    except OSError:
+        return
 
 
 def uninstall_hook(target_repo: Path) -> None:
@@ -112,4 +118,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

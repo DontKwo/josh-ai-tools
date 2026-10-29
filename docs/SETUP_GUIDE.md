@@ -1,23 +1,23 @@
-# Setup Guide: Claude Code Development Environment
+# Setup Guide: AI Tools Development Environment
 
-This guide explains how to set up any Windows, Linux, or macOS machine with Josh's Claude configuration, rules, and scripts.
+This guide explains how to configure any Windows, Linux, or macOS machine with unified rules, developer tooling, and automated AST linting across AI assistants (Claude Code, Cursor, Cline, Antigravity, Codex, Windsurf, Copilot, Aider).
 
 ---
 
-## What Gets Installed
+## What Gets Configured
 
 When you run the setup script:
-1. **Claude Instructions (`~/.claude/CLAUDE.md`)**
-   - Directives enforcing terse replies, no unprompted documentation, zero legacy backward-compatibility shims, and mandatory linter runs after changes.
-   - Setup dynamically adapts file paths to the current machine's home directory.
-   - If an existing `CLAUDE.md` is detected, you will be prompted to **Overwrite**, **Append**, or **Skip**.
+1. **AI Assistant Instructions**
+   - Directives enforcing terse replies, explicit types, git diff-scoped linting, and uv execution.
+   - Dynamic path expansion pointing to this repository.
+   - If a target instruction file already exists, choose overwrite, idempotent append, or skip.
 
-2. **Linter & Grep Tooling (`scripts/`)**
-   - `scripts/claudemd_linter.py`: The 35-rule AST and prose validation script (single source of truth).
-   - `scripts/grep_keywords.py`: Fast directory-aware search utility.
+2. **Automated Linter and MCP Server**
+   - `scripts/claudemd_linter.py`: 45-rule AST and prose validation script.
+   - `mcp/server.py`: Standard Model Context Protocol server exposing repository tools.
 
-3. **Claude Code Configuration (`~/.claude/settings.json`)**
-   - Sourced from `templates/claude_settings.json`: automatically sets `defaultMode: "bypassPermissions"`, enables the dark theme, selects `opus[1m]`, and whitelists scripts so tools run without repetitive permission prompts.
+3. **Global Terminal Shortcuts**
+   - Command wrappers in `bin/` (`ailint`, `aifix`, `airepo`, `aimd`, `aitree`, `aisearch`, `airollback`, etc.) utilizing `uv` when available.
 
 ---
 
@@ -35,12 +35,10 @@ When you run the setup script:
    setup.bat
    ```
 3. Follow the on-screen prompts:
-   - If `CLAUDE.md` already exists, press `O` to overwrite, `A` to append, or `S` to skip.
-   - Confirm script installation.
-   - Choose whether to install the recommended `settings.json`.
-   - Optionally install `vulture` via `pip install vulture` for unused code analysis.
+   - Select configuration mode (Claude only, all tools, or custom interactive wizard).
+   - Choose whether to add `josh-ai-tools\bin` to your User PATH.
 
-### 2. Linux & macOS (Bash / Terminal)
+### 2. Linux and macOS (Bash / Terminal)
 
 1. Clone or copy this repository:
    ```bash
@@ -52,41 +50,31 @@ When you run the setup script:
    chmod +x setup.sh
    ./setup.sh
    ```
-3. Follow the interactive prompts (Overwrite, Append, or Skip if `CLAUDE.md` already exists).
+3. Follow the interactive prompts.
 
 ---
 
-## Verifying the Setup
+## Direct Python and UV Invocation
 
-After installation, verify that the scripts and configuration are in place:
-
-### On Windows
-```cmd
-python %USERPROFILE%\.claude\scripts\claudemd_linter.py --help
-type %USERPROFILE%\.claude\CLAUDE.md
-```
-
-### On Linux / macOS
 ```bash
-python3 ~/.claude/scripts/claudemd_linter.py --help
-cat ~/.claude/CLAUDE.md
+# Configure all supported tools globally
+uv run --no-project python scripts/configure.py --tools all --scope global
+
+# Preview configuration changes without writing
+uv run --no-project python scripts/configure.py --tools all --dry-run
+
+# Run linter against current project
+uv run --no-project python scripts/claudemd_linter.py . --level strict
 ```
 
 ---
 
-## How Claude Enforces This Workflow
+## Verifying Setup
 
-Whenever Claude starts a coding session in a project workspace, it reads your global `CLAUDE.md`.
+```bash
+# Run the automated doctor health check
+uv run --no-project python scripts/doctor.py
 
-According to Josh's rules:
-1. Claude responds tersely without preamble or unsolicited reasoning.
-2. After making any code changes, Claude automatically runs:
-   ```bash
-   python <scripts_dir>/claudemd_linter.py <project_root>
-   ```
-3. Claude inspects `lint_report.txt` and continues iterating until the report reads:
-   ```
-   None. Lint clean.
-   ```
-4. Claude reports only what changed and confirmation that testing succeeded.
-
+# Verify global shortcut
+ailint --help
+```

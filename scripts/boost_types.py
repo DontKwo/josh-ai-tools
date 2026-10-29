@@ -29,18 +29,18 @@ class InferredFunction(NamedTuple):
 def infer_literal_type(node: ast.AST) -> str | None:
     """Infer type name from an AST constant or literal container."""
     if isinstance(node, ast.Constant):
-        val = node.value
-        if isinstance(val, bool):
+        const_value = node.value
+        if isinstance(const_value, bool):
             return "bool"
-        if isinstance(val, int):
+        if isinstance(const_value, int):
             return "int"
-        if isinstance(val, float):
+        if isinstance(const_value, float):
             return "float"
-        if isinstance(val, str):
+        if isinstance(const_value, str):
             return "str"
-        if isinstance(val, bytes):
+        if isinstance(const_value, bytes):
             return "bytes"
-        if val is None:
+        if const_value is None:
             return "None"
     elif isinstance(node, ast.List):
         return "list"
@@ -98,10 +98,10 @@ def infer_return_annotation(
         return "None"
 
     # If all returns are None
-    if all(r == "None" for r in returns):
+    if all(ret_type == "None" for ret_type in returns):
         return "None"
 
-    non_none_returns = [r for r in returns if r != "None"]
+    non_none_returns = [ret_type for ret_type in returns if ret_type != "None"]
     has_none = "None" in returns
 
     # If all non-none returns share the same inferred type

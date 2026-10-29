@@ -1,45 +1,51 @@
 # Style & Tone
 - Be terse. No preamble, conversational filler ("certainly!", "here is the code", "hope this helps"), or apologies.
-- Never use AI writing patterns: no em dashes (rewrite sentences cleanly), no negative parallelisms ("not just X, but Y"), no copulative avoidance ("serves as", "stands as"), no hype/fluff vocabulary ("pivotal", "delve", "testament", "tapestry", "robust", "boasts", "seamlessly"), and no internal citation metadata (`oaicite`, `[cite: ...]`, `【...】`).
-- There is no old version of code. Never add compatibility shims, legacy branches, or deprecated functions.
+- Avoid AI writing patterns: no em dashes (rewrite sentences cleanly), no negative parallelisms (`"not just X, but Y"`), no copulative avoidance (`"serves as"`, `"stands as"`), no hype/fluff vocabulary (`"pivotal"`, `"delve"`, `"testament"`, `"tapestry"`, `"robust"`, `"boasts"`, `"seamlessly"`), and no internal citation metadata (`oaicite`, `[cite: ...]`, `【...】`).
+- Write only for current behavior. Never add compatibility `shims`, `legacy` branches, or `deprecated` functions unless explicitly requested.
 - Every function signature must have explicit parameter and return type annotations.
-- Keep comments <= 2 lines. State only what code does now; never explain history, reasons, or old behavior. Use `# long-comment-ok` only when detailed documentation is strictly necessary.
+- Keep comments <= 2 lines. State only what code does now. Use `# long-comment-ok` only when multi-line explanation is strictly necessary (such as complex algorithms or mathematical derivations).
 
 # Architectural Reorganization & Refactoring
-- If at any time you believe a repository, folder, or file should be reorganized, renamed, modularized, or rescoped, ALWAYS present the suggestion to the user with a clear architectural rationale and wait for explicit approval before proceeding.
+- If you believe a repository, folder, or file should be reorganized, renamed, modularized, or rescoped, present the suggestion to the user with a clear architectural rationale and wait for explicit approval before proceeding.
 
-# Engineering & Human Reviewability Directives
-- Step-by-Step Readability: Prefer straightforward loops and explicit state transitions over nested comprehensions or generator reductions.
-- Horizontal Flow & Term Decomposition: Decompose multi-operation equations into named intermediate terms (`term1`, `term2`, `num`, `denom`, `exp`). Allow expressions to extend horizontally up to 140 characters; never artificially break equations across lines to meet 79-character limits.
-- Calculation Function Naming: Prefix engineering and thermodynamic calculation functions with `calc_` (e.g. `calc_T0_from_T`, `calc_ISP_from_TSFC`, `calc_m_prop`).
-- Units & Domain Shorthand: Use standard domain shorthand (`gam`, `cp`, `R`, `T04`, `TSFC`, `ISP`, `GLOW`, `TW0`, `dV`). Suffix ambiguous quantities with units (`_kg`, `_m`, `_pa`, `_deg`, `_psi`, `_kw`). Provide unit conversion helpers (`lb2kg`, `deg2rad`) or use `pint.UnitRegistry` for dimensional tracking.
-- Physical Defaults: Place physical constants as keyword defaults in signatures (`gam: float = 1.4`, `cp: float = 1005.0`, `R: float = 287.0`).
-- Encapsulation: Structure modular computation scripts into discrete problem functions (`prob1()`, `prob2()`, `main()`).
-- Simulation Loops: Use explicit forward time-stepping loops (`for t_step in t:`) and plain lists.
-- Plain Data Structures: Favor plain dictionaries and Plain Old Data structures over abstract base classes, metaclasses, or deep OOP hierarchies in numerical code.
-- Design Sweeps: Accumulate constraint violations in dictionary counters instead of aborting loops with exceptions.
-- Zero AI Docstring Bloat: Never generate multi-line Google/Sphinx docstrings (`Args:`, `Returns:`) for short mathematical functions. Never use decorative divider banners (`######`, `======`).
-- Multi-Language Standards:
-  - Python: Use Matplotlib with raw LaTeX labels (`r'$T_0/T_x$'`), `plt.grid(True)`, and shared axes.
-  - C++: Use `#pragma once`, `#define M_PI`, templated solvers, capture lambdas (`[&]`), and Eigen.
-  - MATLAB: Use `readmatrix`, in-place table filtering, and anonymous function handles.
+# Python Execution
+- Run Python commands through uv: `uv run --no-project --python "<venv_python>" <command>`.
+- Always pass `--no-project` to prevent uv from initializing new projects or auto-creating virtual environments.
+- Reuse an existing virtual environment as close as possible to the run root. Locate `<venv_python>` using this search precedence:
+  1. Search upward from the command run root (working directory) toward the project root and filesystem root for `.venv` or `venv`.
+     - Windows: `<found_venv>\Scripts\python.exe`
+     - Linux/macOS: `<found_venv>/bin/python`
+  2. If upward directory search finds no virtual environment, check the active `VIRTUAL_ENV` or `CONDA_PREFIX` environment variables.
+  3. Check `.vscode/settings.json` for `python.defaultInterpreterPath` if present.
+  4. If no virtual environment exists anywhere in the directory hierarchy, do not create one. Halt and ask the user for the target Python interpreter path (or permission to use host Python). Never initialize a new environment (`uv venv`, `uv sync`, bare `uv run`, `python -m venv`, `virtualenv`, `conda`).
+- Always wrap `<venv_python>` in double quotes to handle paths with spaces.
+- If `uv` is unavailable on PATH, fall back to executing `"<venv_python>" <command>` directly.
+- Formulate commands explicitly:
+  - Scripts: `uv run --no-project --python "<venv_python>" <script_path> [args]`
+  - Modules & test runners: `uv run --no-project --python "<venv_python>" python -m <module> [args]` (e.g. `-m pytest`, `-m unittest`)
+  - Inline expressions: `uv run --no-project --python "<venv_python>" python -c "<code>"`
+- Never install packages into the environment without explicit user approval.
+- Repository tools from `josh-ai-tools` may execute with the host runner (`uv run --no-project python <script>`) when the target project virtual environment lacks tool dependencies.
+- See {{PYTHON_RULES_PATH}} for additional environment context.
 
 # After Changes
-- Reply with a brief list: what changed + confirmation it was tested.
+- Reply with a brief list: what changed + confirmation it was tested (or state explicitly that it was not tested).
   Example: "Fixed off-by-one in parser. Added retry logic. All 27 unit tests passing."
 
 # Documentation
-- Never write .md documentation files unless explicitly requested. No unsolicited guides or README expansions.
+- Never create unsolicited .md documentation files (no unrequested READMEs, architecture summaries, or guides). Deliverables explicitly requested by the user are permitted. Internal agent artifacts and scratchpads are permitted. Editing existing documentation when modifying features is permitted.
+
+# Domain Rules
+- For engineering, numerical, or thermodynamic tasks, follow {{ENGINEERING_RULES_PATH}}. Domain equations adhering to these rules are exempt from single-letter variable checks (Rule 38).
 
 # Linter (Mandatory)
-- After every code change, run the linter against the entire project root:
-  {{LINTER_COMMAND}} <project_root> --level strict
-- Verification levels:
+- After every code change, run the linter:
+  {{LINTER_COMMAND}} . --level strict
+- In git repositories with existing history, the linter runs with `--diff` by default so only changed files get linted. Run with `--full` only when the user explicitly requests a full repository audit.
+- Verification levels (distinct from the `--full` scan scope):
   - `--level standard`: Anti-AI writing guards, core AST safety, equation formatting.
-  - `--level strict` (Default): Adds `calc_` naming, term decomposition, banner removal, unit annotations.
-  - `--level full`: Adds strict type hints, zero prints, dead code removal, Qt GUI rules.
+  - `--level strict` (Default): Adds term decomposition, banner removal, unit annotations, descriptive naming.
+  - `--level full`: Strict type hints, zero prints, dead code removal, Qt GUI rules. Run only when requested by the user.
   - Fine-grained overrides: `--skip <codes>` or `--only <codes>` for targeted checks.
-- Then read {{REPORT_PATH}} in full.
-- Fix every violation listed using the code's legend entry. This applies to every file in the project folder.
-- Re-run until the report reads "None. Lint clean."
-- `# noqa` / `# noqa: <codes>` suppresses checks; use only when code is genuinely correct as-is. Never use noqa as a shortcut.
+- When violations occur, inspect the report file path printed in terminal output. Fix every violation and re-run until the output reads "None. Lint clean." (the report file is deleted automatically once clean).
+- `# noqa` / `# noqa: <codes>` suppresses checks; use only when code is genuinely correct as-is. For third-party, vendor, or generated code where modifications would break functionality, add targeted inline `# noqa: <code>` comments.

@@ -1,97 +1,89 @@
 @echo off
 setlocal EnableDelayedExpansion
 
-echo =======================================================
-echo          Josh's AI Tools Setup for Windows
-echo =======================================================
+echo Josh AI Tools Setup for Windows
 echo.
 
 set "SCRIPT_DIR=%~dp0"
-set "CLAUDE_DIR=%USERPROFILE%\.claude"
-set "SOURCE_SETTINGS=%SCRIPT_DIR%templates\claude_settings.json"
 set "CONFIGURATOR=%SCRIPT_DIR%scripts\configure.py"
 
-:: Check for Python
-python --version >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [!] ERROR: Python 3 is not found in your PATH.
-    echo     Please install Python 3.9+ to run the setup and linter tools.
-    pause
-    exit /b 1
+:: Check for uv or Python
+where uv >nul 2>&1
+if %errorlevel% equ 0 (
+    set "RUNNER=uv run --no-project python"
+    for /f "tokens=*" %%v in ('uv --version 2^>^&1') do echo [OK] uv detected: %%v
+) else (
+    python --version >nul 2>&1
+    if %errorlevel% neq 0 (
+        echo [!] ERROR: Neither uv nor Python 3 was found in your PATH.
+        echo     Please install uv or Python 3.9+ to run setup and linter tools.
+        pause
+        exit /b 1
+    )
+    set "RUNNER=python"
+    for /f "tokens=*" %%v in ('python --version 2^>^&1') do echo [OK] Python detected: %%v
 )
 
-for /f "tokens=*" %%v in ('python --version 2^>^&1') do set "PY_VER=%%v"
-echo [OK] Python detected: !PY_VER!
 echo Repo directory: %SCRIPT_DIR%
 echo.
 
 echo Choose configuration mode:
 echo   [1] Configure Claude Code only (Global ~/.claude/CLAUDE.md)
-echo   [2] Configure ALL AI Tools (Claude, Cursor, Cline, Antigravity, Codex, Windsurf, Copilot, Aider)
-echo   [3] Custom Interactive Wizard
+echo   [2] Configure ALL AI Tools globally (Claude, Cursor, Cline, Antigravity, Codex, Windsurf, Copilot, Aider)
+echo   [3] Custom Interactive Wizard (choose tools, workspace vs global scope)
 echo.
-choice /C 123 /N /M "Select option [1, 2, or 3]: "
+choice /C 123 /M "Select option [1, 2, or 3]"
 set "MODE_CHOICE=%errorlevel%"
 
 if "%MODE_CHOICE%"=="1" (
     echo.
     echo [+] Configuring Claude Code...
-    python "%CONFIGURATOR%" --tools claude --scope global
+    call %RUNNER% "%CONFIGURATOR%" --tools claude --scope global
 )
 if "%MODE_CHOICE%"=="2" (
     echo.
     echo [+] Configuring ALL supported AI tools...
-    python "%CONFIGURATOR%" --tools all --scope global
+    call %RUNNER% "%CONFIGURATOR%" --tools all --scope global
 )
 if "%MODE_CHOICE%"=="3" (
     echo.
-    python "%CONFIGURATOR%"
+    call %RUNNER% "%CONFIGURATOR%"
 )
 
-:: Handle Claude settings.json template if Claude is configured
-echo.
-set "DEST_SETTINGS=%CLAUDE_DIR%\settings.json"
-if exist "%CLAUDE_DIR%" (
-    if exist "%DEST_SETTINGS%" (
-        echo [?] Claude settings.json already exists at %DEST_SETTINGS%.
-        choice /C YN /M "Overwrite existing settings.json with Josh's recommended settings? "
-        if errorlevel 1 (
-            if not errorlevel 2 (
-                copy /y "%SOURCE_SETTINGS%" "%DEST_SETTINGS%" >nul
-                echo [OK] settings.json updated.
-            )
-        )
-    ) else (
-        choice /C YN /M "Install recommended Claude settings.json (bypassPermissions mode, dark theme)? "
-        if not errorlevel 2 (
-            copy /y "%SOURCE_SETTINGS%" "%DEST_SETTINGS%" >nul
-            echo [OK] settings.json installed.
-        )
-    )
+if %errorlevel% neq 0 (
+    echo.
+    echo [!] Configuration encountered an error.
+    pause
+    exit /b %errorlevel%
 )
 
 :: Check for optional vulture package
 echo.
-choice /C YN /M "Install optional 'vulture' package for unused code detection (rule 21)? "
+choice /C YN /M "Install optional 'vulture' package for unused code detection (used in --level full audits)? "
 if not errorlevel 2 (
-    echo [+] Running: pip install vulture
-    pip install vulture
+    where uv >nul 2>&1
+    if %errorlevel% equ 0 (
+        echo [+] Running: uv tool install vulture
+        uv tool install vulture
+    ) else (
+        echo [+] Running: pip install vulture
+        pip install vulture
+    )
 )
 
 :: Global shortcuts in PATH
 echo.
-choice /C YN /M "Add josh-ai-tools\bin to your User PATH (enables 'ailint', 'aifix', 'airepo', 'aimd', 'aitree', 'aisearch', 'aislice', 'aidiff', 'airollback', 'aisync', 'aitest', 'aitokens', 'aicontext', 'aisec', 'aihook')? "
+choice /C YN /M "Add josh-ai-tools\bin to your User PATH? "
 if not errorlevel 2 (
     powershell -NoProfile -ExecutionPolicy Bypass -Command ^
         "$binPath = '%SCRIPT_DIR%bin'.TrimEnd('\'); " ^
         "$userPath = [Environment]::GetEnvironmentVariable('Path', 'User'); " ^
-        "if ($userPath -notlike \"*$binPath*\") { [Environment]::SetEnvironmentVariable('Path', \"$userPath;$binPath\", 'User'); Write-Host '[OK] Added to User PATH!' } else { Write-Host '[OK] Already in User PATH.' }"
+        "$parts = if ($userPath) { $userPath.Split(';') } else { @() }; " ^
+        "if ($parts -notcontains $binPath) { $newPath = (($parts + $binPath) -join ';').Trim(';'); [Environment]::SetEnvironmentVariable('Path', $newPath, 'User'); Write-Host '[OK] Added to User PATH!' } else { Write-Host '[OK] Already in User PATH.' }"
+    echo [NOTE] Please restart active terminal sessions for the updated PATH to take effect.
 )
 
 echo.
-echo =======================================================
-echo               Setup Completed Successfully!
-echo =======================================================
-echo All selected AI tools are configured with your rules and linter.
+echo Setup finished. Selected AI tools configured.
 echo.
 pause

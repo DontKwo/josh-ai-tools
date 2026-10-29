@@ -1,19 +1,19 @@
 # josh-ai-tools
 
-Portable environment configuration and automated tooling to set up any machine (Windows, Linux, or macOS) across **any popular AI developer tool** (Claude Code, Cursor, Cline / Roo Code, Google Antigravity, OpenAI Codex / ChatGPT, Windsurf, GitHub Copilot, Aider) with Josh's exact developer workflow, style rules, AST-driven linter, safe auto-fixer, context optimizers, and native MCP server.
+Portable environment configuration and automated tooling to set up any machine (Windows, Linux, or macOS) across popular AI developer tools (Claude Code, Cursor, Cline / Roo Code, Google Antigravity, OpenAI Codex / ChatGPT, Windsurf, GitHub Copilot, Aider) with Josh's developer workflow, style rules, AST-driven linter, safe auto-fixer, context optimizers, and native MCP server.
 
 ---
 
 ## Supported AI Tools
 
-`josh-ai-tools` automatically detects and configures the exact rule/instruction files required for each AI tool, pointing every one of them to the same canonical linter script located inside this cloned repository:
+`josh-ai-tools` automatically detects and configures the exact rule and instruction files required for each AI tool, pointing every one of them to the canonical linter script located inside this cloned repository:
 
 | AI Tool | Global Target | Workspace / Project Target | Notes |
 |:---|:---|:---|:---|
-| **Claude Code** | `~/.claude/CLAUDE.md` | `CLAUDE.md` | Includes `templates/claude_settings.json` template |
+| **Claude Code** | `~/.claude/CLAUDE.md` | `CLAUDE.md` | Configures CLAUDE.md rules |
 | **Cursor IDE** | `~/.cursorrules` | `.cursorrules` & `.cursor/rules/josh-rules.mdc` | Includes Cursor MDC frontmatter |
 | **Cline & Roo Code** | `~/.clinerules` | `.clinerules` | Full compatibility with both extensions |
-| **Google Antigravity (AGY)** | `~/.gemini/antigravity/rules/josh_rules.md` | `.agent/rules/josh_rules.md` | Native Antigravity rules format |
+| **Google Antigravity (AGY)** | `~/.gemini/config/AGENTS.md` | `AGENTS.md` & `.agent/rules/josh_rules.md` | Native Antigravity rules format |
 | **OpenAI Codex & ChatGPT** | `~/.codex/instructions.md` | `AGENTS.md` & `OPENAI.md` | Universal agent markdown convention |
 | **Windsurf IDE** | `~/.windsurfrules` | `.windsurfrules` | Codeium / Windsurf configuration |
 | **GitHub Copilot** | N/A | `.github/copilot-instructions.md` | Copilot workspace rules |
@@ -36,38 +36,45 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
-### Direct Python Invocation (CLI & Automation)
+### Direct Invocation (`uv` or Python)
 ```bash
-# Configure ALL tools globally
-python scripts/configure.py --tools all --scope global
+# Configure all tools globally
+uv run --no-project python scripts/configure.py --tools all --scope global
 
 # Configure a specific tool for the current project
-python scripts/configure.py --tools cursor,cline --scope workspace
+uv run --no-project python scripts/configure.py --tools cursor,cline --scope workspace
 
 # Interactive setup wizard
-python scripts/configure.py
+uv run --no-project python scripts/configure.py
 ```
 
 ---
 
 ## Global Terminal Shortcuts
 
-Once installed via `setup.bat` or `setup.sh`, you can run these commands from **any** terminal in **any** project folder:
+Once installed via `setup.bat` or `setup.sh`, you can run these 20 commands from any terminal in any project folder:
 
 ```bash
-ailint            # Run the 37-rule linter against the current directory
-ailint --diff     # Run the linter ONLY against modified/untracked git files
+ailint            # Run the 45-rule linter (diff default, pass --full for whole repo)
 aifix             # Apply safe, guaranteed formulaic fixes (== None, quotes, unicode)
 airepo            # Dump a compact AST symbol tree of the current codebase
 aiprune           # Detect and prune unused/zombie imports and dead code
 aiboost           # Infer and apply type annotations to unannotated functions
 aideps            # Detect hallucinated imports and undeclared dependencies
 aimd              # Convert PDF, DOCX, PPTX, XLSX, CSV, IPYNB to structured Markdown
-aitree            # Token-efficient directory tree with line counts & file sizes
-aisearch          # Fast regex & symbol search across codebases with context lines
+aitree            # Token-efficient directory tree with line counts and file sizes
+aisearch          # Fast regex and symbol search across codebases with context lines
 aislice           # View targeted line ranges of any file with line numbers
 aidiff            # AST-aware token-compressed git diff for LLM prompts
 airollback        # Snapshot checkpoints and one-key rollback manager
+aicontext         # Pack workspace context into token-budgeted prompt files
+aitokens          # Calculate token budgets and file token counts
+aisec             # Scan repository for exposed secrets and credentials
+aitest            # Run smart targeted test runner for modified files
+aispell           # Scan code and comments for common typos
+aivars            # Check variable names for single-letter and uninformative identifiers
+aihook            # Install Antigravity and git safety hooks
+aisync            # Synchronize instructions across all configured AI tools
 ```
 
 ---
@@ -80,48 +87,66 @@ josh-ai-tools/
 ├── setup.bat                      # Windows interactive setup script (auto-configures rules & MCP)
 ├── setup.sh                       # Linux & macOS interactive setup script (auto-configures rules & MCP)
 ├── .gitignore                     # Git ignores for Python, cache, and checkpoints
-├── bin/                           # Global terminal shortcuts
-│   ├── ailint.cmd / ailint        # Quick linter command
-│   ├── aifix.cmd / aifix          # Quick safe auto-fixer command
-│   ├── airepo.cmd / airepo        # Quick symbol map command
-│   ├── aiprune.cmd / aiprune      # Quick dead code & zombie import pruner
-│   ├── aiboost.cmd / aiboost      # Quick type annotation booster
-│   ├── aideps.cmd / aideps        # Quick hallucinated dependency scanner
-│   ├── aimd.cmd / aimd            # Universal document to Markdown converter
-│   ├── aitree.cmd / aitree        # Visual codebase hierarchy & token estimator
-│   ├── aisearch.cmd / aisearch    # Fast codebase regex & symbol searcher
-│   ├── aislice.cmd / aislice      # Targeted file line slicer
-│   ├── aidiff.cmd / aidiff        # AST git diff compressor
-│   └── airollback.cmd / airollback# Workspace checkpoint & rollback manager
+├── bin/                           # 20 global terminal shortcuts
+│   ├── aiboost / aiboost.cmd      # Type annotation booster
+│   ├── aicontext / aicontext.cmd  # Context packing utility
+│   ├── aideps / aideps.cmd        # Dependency scanner
+│   ├── aidiff / aidiff.cmd        # AST git diff compressor
+│   ├── aifix / aifix.cmd          # Safe auto-fixer
+│   ├── aihook / aihook.cmd        # Hook installer
+│   ├── ailint / ailint.cmd        # 45-rule linter
+│   ├── aimd / aimd.cmd            # Universal document to Markdown converter
+│   ├── aiprune / aiprune.cmd      # Dead code and zombie import pruner
+│   ├── airepo / airepo.cmd        # Compact symbol tree generator
+│   ├── airollback / airollback.cmd# Checkpoint and rollback manager
+│   ├── aisearch / aisearch.cmd    # Fast regex search
+│   ├── aisec / aisec.cmd          # Secret scanner
+│   ├── aislice / aislice.cmd      # Targeted file line slicer
+│   ├── aispell / aispell.cmd      # Code typo scanner
+│   ├── aisync / aisync.cmd        # Tool rules synchronizer
+│   ├── aitest / aitest.cmd        # Smart test runner
+│   ├── aitokens / aitokens.cmd    # Token budget calculator
+│   ├── aitree / aitree.cmd        # Codebase hierarchy tree
+│   └── aivars / aivars.cmd        # Variable naming scanner
 ├── templates/
-│   ├── INSTRUCTIONS_TEMPLATE.md   # [Single Source of Truth] Unified AI instruction template
-│   ├── claude_settings.json       # [Single Source of Truth] Claude Code settings template
-│   └── mcp_config.json            # Template for registering MCP server
+│   ├── INSTRUCTIONS_TEMPLATE.md   # Unified AI instruction template
+│   ├── ENGINEERING_RULES.md       # Engineering and numerical computation standards
+│   ├── PYTHON_RULES.md            # Python execution and environment reuse rules
+│   └── mcp_config.json            # Template for registering native MCP server
 ├── scripts/
-│   ├── configure.py               # Universal multi-AI configurator & automatic MCP server setup
-│   ├── claudemd_linter.py         # 37-rule AST, Wikipedia AI writing & citation bug linter
-│   ├── lint_fixer.py              # Safe auto-fixer for deterministic mechanical violations
-│   ├── repo_map.py                # Token-efficient symbol & dependency map generator
-│   ├── minify_instructions.py     # Prompt minifier for instruction files
-│   ├── grep_keywords.py           # Reusable directory-aware grep utility
-│   ├── doctor.py                  # Health check, MCP verification & self-healing synchronizer
-│   ├── install_hooks.py           # Git pre-commit enforcement hook installer
-│   ├── clean_encoding.py          # Mojibake & character encoding cleaner
-│   ├── prune_dead_code.py         # Dead code & zombie import pruner (deterministic AST)
 │   ├── boost_types.py             # Type annotation booster (safe AST type inference)
-│   ├── check_dependencies.py      # Hallucinated dependency & package import scanner
-│   ├── to_markdown.py             # Universal PDF, DOCX, PPTX, XLSX, CSV, IPYNB to Markdown parser
+│   ├── check_dependencies.py      # Hallucinated dependency and import scanner
+│   ├── check_variable_names.py    # Variable name checker for uninformative names
+│   ├── claudemd_linter.py         # 45-rule AST, AI writing, and code quality linter
+│   ├── clean_encoding.py          # Mojibake and character encoding cleaner
+│   ├── configure.py               # Universal multi-AI configurator and MCP setup
 │   ├── dir_overview.py            # Token-efficient visual codebase tree
-│   ├── fast_search.py             # Directory-aware fast regex search with context lines
-│   ├── slice_file.py              # Targeted line range extractor with line numbers
+│   ├── doctor.py                  # Health check, MCP verification, and synchronizer
+│   ├── fast_search.py             # Fast regex search with context lines
+│   ├── grep_keywords.py          # Smart directory-aware regex search utility
+│   ├── install_antigravity_hooks.py # Hook installer for Google Antigravity
+│   ├── install_hooks.py           # Git pre-commit hook installer
+│   ├── lint_fixer.py              # Safe auto-fixer for deterministic mechanical violations
+│   ├── minify_instructions.py     # Prompt compressor for rule and instruction files
+│   ├── pack_context.py            # Codebase context packager for LLM prompts
+│   ├── prune_dead_code.py         # Dead code and zombie import pruner
 │   ├── redact_diff.py             # AST git diff redactor (60-80% token savings)
-│   └── rollback.py                # Instant workspace checkpoint and rollback engine
+│   ├── repo_map.py                # Token-efficient symbol and dependency map generator
+│   ├── rollback.py                # Instant workspace checkpoint and rollback engine
+│   ├── secret_sanitizer.py        # Token, API key, and credential scanner
+│   ├── slice_file.py              # Targeted line range extractor with line numbers
+│   ├── smart_test_runner.py       # Smart test runner detecting affected tests from diffs
+│   ├── spell_checker.py           # AST-aware typo scanner for code identifiers
+│   ├── sync_rules.py              # Synchronizes instruction templates across installed tools
+│   ├── to_markdown.py             # Universal document to Markdown converter
+│   └── token_budget.py            # File token counter and context budget analyzer
 ├── mcp/
-│   └── server.py                  # Standard MCP server exposing 14 native tools
+│   └── server.py                  # Standard MCP server exposing 22 native tools
 ├── tests/
-│   └── test_linter.py             # Complete unit test suite (32 tests passing)
+│   ├── test_linter.py             # Unit tests for linter rules and companion tools
+│   └── test_new_tools.py          # Unit tests for context, budget, test runner, and spell checker
 └── docs/
-    ├── LINTER_RULES.md            # Complete reference for all 37 linter codes & suppressions
+    ├── LINTER_RULES.md            # Reference for all 45 linter codes and suppressions
     └── SETUP_GUIDE.md             # Detailed installation and verification manual
 ```
 
@@ -129,22 +154,23 @@ josh-ai-tools/
 
 ## Tooling Suite & Features
 
-### 1. Advanced 37-Rule Anti-AI Linter (`scripts/claudemd_linter.py`)
-- **Git Diff Scoped Linting**: Pass `--diff` to only lint modified/untracked files or `--staged` for staged changes.
+### 1. Advanced 45-Rule Anti-AI Linter (`scripts/claudemd_linter.py`)
+- **Git Diff Scoped by Default**: Lints modified and untracked git files by default; pass `--full` for full repository audits.
+- **Project-Scoped Reports**: Automatically creates `lint_report_<project>.txt` when violations occur and unlinks the report when clean.
 - **Incremental Caching**: `.lint_cache.json` caches hash results for sub-second turnarounds.
 - **Safe Parallel Processing**: Multiprocessing safely capped at `min(cpu_count, 4)`.
-- **Wikipedia: Signs of AI Writing Coverage**: Covers all 300+ vocabulary markers, copulative avoidance, negative parallel constructions, and Rule 36 internal LLM metadata / citation bugs.
-- **Rule 37 Conversational AI Guard**: Flags chatbot boilerplate, salutations, and conversational residue.
+- **Wikipedia AI Writing Detection**: Detects vocabulary markers, copulative avoidance, negative parallel constructions, and LLM metadata markers.
+- **Conversational AI Guard**: Flags chatbot boilerplate, salutations, and conversational residue.
 
 ### 2. Guaranteed Safe Auto-Fixer (`scripts/lint_fixer.py`)
 - Rule 15: `== None` $\to$ `is None`, `!= None` $\to$ `is not None`
 - Rule 2: Normalizes curly quotes, ellipsis, non-breaking spaces, and BOMs to ASCII.
 - Rule 3: Safely strips emojis (with `--fix-emojis`).
-- **Safety Guarantee**: Rule 1 (em dash) is **never** automated and requires manual sentence rewriting.
+- **Safety Guarantee**: Rule 1 (em dash) is never automated and requires manual sentence rewriting.
 
 ### 3. Universal Document to Markdown Converter (`scripts/to_markdown.py` / `aimd`)
 - Converts **PDF, DOCX, PPTX, XLSX, CSV, IPYNB, and HTML** into clean, structured, token-efficient Markdown.
-- 100% standard library Python implementation for DOCX, PPTX, XLSX, CSV, IPYNB, HTML (zero required pip dependencies).
+- Standard library Python implementation for DOCX, PPTX, XLSX, CSV, IPYNB, HTML with zero required pip packages.
 - Formats tables cleanly into GitHub Flavored Markdown tables.
 
 ### 4. AST Git Diff Redactor (`scripts/redact_diff.py` / `aidiff`)
@@ -168,23 +194,23 @@ josh-ai-tools/
 ### 9. Hallucinated Dependency Scanner (`scripts/check_dependencies.py` / `aideps`)
 - Detects non-existent AI-hallucinated packages and undeclared dependencies.
 
-### 10. Native MCP Server with 14 Tools (`mcp/server.py`)
-- Directly exposes all 14 tools to Claude, Cursor, Windsurf, Cline, and Antigravity.
-- Automatically configured for all AI tools via `setup.bat`, `setup.sh`, and `configure.py`.
+### 10. Native MCP Server with 22 Tools (`mcp/server.py`)
+- Directly exposes all 22 tools to Claude, Cursor, Windsurf, Cline, and Antigravity.
+- Automatically configured for AI tools via `setup.bat`, `setup.sh`, and `configure.py`.
 
-### 11. Complete Unit Test Suite (`tests/test_linter.py`)
-- Run `python -m unittest tests/test_linter.py` to verify all 32 unit tests across rules and companion tools.
+### 11. Complete Unit Test Suite (`tests/`)
+- Run `uv run --no-project python -m unittest discover -s tests` to verify all 51 unit tests across rules and companion tools.
 
 ---
 
 ## Requirements
 
-- Python 3.9+
-- Optional: `vulture` (`pip install vulture`) for dead-code and unused function detection (rule 21).
+- Python 3.9+ or `uv`
+- Optional: `vulture` (`uv tool install vulture`) for dead-code and unused function detection (rule 21).
 
 ---
 
 ## Documentation
 
-- [docs/LINTER_RULES.md](file:///docs/LINTER_RULES.md) - Deep dive into all 35 linter codes, legend descriptions, and suppression rules (`# noqa`, `# long-comment-ok`).
-- [docs/SETUP_GUIDE.md](file:///docs/SETUP_GUIDE.md) - Step-by-step setup walkthrough for Windows, macOS, and Linux across all AI tools.
+- [docs/LINTER_RULES.md](docs/LINTER_RULES.md): Deep dive into all 45 linter codes, legend descriptions, and suppression rules (`# noqa`, `# long-comment-ok`).
+- [docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md): Step-by-step setup walkthrough for Windows, macOS, and Linux across all AI tools.

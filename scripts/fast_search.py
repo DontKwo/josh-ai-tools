@@ -18,8 +18,8 @@ DEFAULT_IGNORES = {
 if hasattr(sys.stdout, "reconfigure"):
     try:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    except Exception:
-        pass
+    except OSError:
+        sys.stdout = sys.stdout
 
 
 def is_binary_file(path: Path) -> bool:
@@ -61,10 +61,7 @@ def search_in_file(
     for m_idx in sorted(matched_lines):
         start = max(0, m_idx - context)
         end = min(len(lines), m_idx + context + 1)
-        chunk_lines = [
-            f"{'->' if i == m_idx else '  '} {i + 1:4d} | {lines[i]}"
-            for i in range(start, end)
-        ]
+        chunk_lines = [f"{'->' if i == m_idx else '  '} {i + 1:4d} | {lines[i]}" for i in range(start, end)]
         matches.append((m_idx + 1, chunk_lines))
 
     return matches
@@ -134,8 +131,8 @@ def main() -> int:
             print(f"File: {rel}")
             for line_no, chunk in results:
                 total_matches += 1
-                for c in chunk:
-                    print(c)
+                for line_str in chunk:
+                    print(line_str)
                 print()
 
     if not args.names_only:

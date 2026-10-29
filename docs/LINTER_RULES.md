@@ -7,12 +7,12 @@
 ## Command Line Usage
 
 ### Standard Run
-Run the linter against a single file, a subdirectory, or the entire repository root:
+Run the linter against a single file, a subdirectory, or the entire repository root (or use the `ailint` CLI shortcut):
 ```bash
-python scripts/claudemd_linter.py <file_or_directory>
+uv run --no-project python scripts/claudemd_linter.py <file_or_directory>
 ```
 The report is written to:
-`scripts/lint_report.txt`
+`scripts/lint_report_<project>.txt`
 
 If there are no violations, the report will state:
 ```
@@ -20,33 +20,33 @@ None. Lint clean.
 ```
 
 ### Git Diff Scoped Linting (`--diff` / `--staged`)
-Lint only files modified or untracked in git to dramatically accelerate iterative workflows:
+Lint only files modified or untracked in git to accelerate iterative workflows (pass `--full` for a whole-repository audit):
 ```bash
 # Lint all modified and untracked files
-python scripts/claudemd_linter.py --diff
+uv run --no-project python scripts/claudemd_linter.py --diff
 
 # Lint only staged git changes
-python scripts/claudemd_linter.py --staged
+uv run --no-project python scripts/claudemd_linter.py --staged
 ```
 
 ### Incremental Caching (`--no-cache`)
-By default, `claudemd_linter.py` uses `.lint_cache.json` to store MD5 hashes and violation results. Clean, unmodified files are skipped automatically, yielding sub-second turnaround times.
+By default, `claudemd_linter.py` uses `.lint_cache.json` to store hashes and violation results. Clean, unmodified files are skipped automatically:
 ```bash
 # Force a clean re-scan bypassing the cache
-python scripts/claudemd_linter.py . --no-cache
+uv run --no-project python scripts/claudemd_linter.py . --no-cache
 ```
 
 ### Parallel File Scanning (`--no-parallel`)
-For large codebases (> 15 files), the linter automatically utilizes parallel worker processes capped safely at `min(cpu_count, 4)` to protect system memory and CPU responsiveness.
+For large codebases, the linter utilizes parallel worker processes capped at `min(cpu_count, 4)`:
 ```bash
 # Force single-threaded sequential execution
-python scripts/claudemd_linter.py . --no-parallel
+uv run --no-project python scripts/claudemd_linter.py . --no-parallel
 ```
 
 ### Suppression Audit (`--noqa`)
 Audit all suppressions across your codebase:
 ```bash
-python scripts/claudemd_linter.py <file_or_directory> --noqa
+uv run --no-project python scripts/claudemd_linter.py <file_or_directory> --noqa
 ```
 This scans and reports every instance of `# noqa`, `// noqa`, `# type: ignore`, `# pragma: no cover`, `# pylint: disable`, `# nosec`, and `TODO/FIXME/HACK/XXX` comments.
 
@@ -68,10 +68,10 @@ This scans and reports every instance of `# noqa`, `// noqa`, `# type: ignore`, 
 | **2** | AI Writing | Non-standard unicode (curly quotes, ellipsis `…`, en dash, nbsp, BOM, etc.) | Replace with plain standard ASCII characters. |
 | **3** | AI Writing | Emoji present | Remove entirely from code, comments, and strings. |
 | **4** | AI Writing | AI-style filler/transition/hype phrase (Over 300+ guards against AI copulatives, significance inflations, and conversational fluff) | Delete or rewrite plainly with direct technical language. |
-| **5** | AI Writing | Negative-parallelism construction ("not X, it's Y" / "not just X but Y" / "Y rather than X") | Rewrite as a direct, positive statement. |
-| **6** | AI Writing | Vague/unsupported attribution ("some argue", "studies show", "critics say") | Replace with a specific, sourced statement or delete. |
-| **7** | Documentation | Reasoning/history comment (explaining past changes or referencing old behavior) | Rewrite to state only what the code does now. Never explain why past versions changed. |
-| **8** | Architecture | Backwards-compatibility / legacy / deprecated construct | Delete the shim/fallback; there is only one active version of code. |
+| **5** | AI Writing | Negative-parallelism construction (`"not X, it's Y"` / `"not just X but Y"` / `"Y rather than X"`) | Rewrite as a direct, positive statement. |
+| **6** | AI Writing | Vague or unsupported attribution (`"some argue"`, `"studies show"`, `"critics say"`) | Replace with a specific, sourced statement or delete. |
+| **7** | Documentation | Reasoning or history comment (`explaining past changes` or `referencing old behavior`) | Rewrite to state only what the code does now. |
+| **8** | Architecture | Historical construct (`delete legacy shim`) | Delete fallback wrapper; maintain only one active version. |
 | **9** | Python AST | Bare `except:` clause | Specify exact exception type(s) (e.g., `except ValueError:`). |
 | **10** | Python AST | Bare `pass` as the entire body of a function or except block | Implement logic or raise `NotImplementedError`. |
 | **11** | Python AST | Missing type hints on function signature | Add type annotations to all parameters and the return value (e.g., `def parse(val: str) -> int:`). |
@@ -100,7 +100,15 @@ This scans and reports every instance of `# noqa`, `// noqa`, `# type: ignore`, 
 | **34** | UI / Qt | `setDecimals()` called with a low literal on a spin box | Avoid low literal truncation; allow full precision or suppress with `# noqa: 34` if currency. |
 | **35** | UI / Qt | Button/input widget lacking `setToolTip()` | Assign a tooltip to every interactive control via tooltip registry. |
 | **36** | AI Artifacts | LLM internal metadata bug or citation artifact (`oaicite`, `[cite: X]`, `【X】`, `turn0search0`, `utm_source=chatgpt`) | Delete internal citation artifact or hallucinated search query link entirely. |
-| **37** | AI Writing | Conversational AI filler or salutation ("certainly!", "here is the updated code", "hope this helps") | Remove chatbot conversational residue completely. |
+| **37** | AI Writing | Conversational AI filler or salutation (`"certainly!"`, `"here is the updated code"`, `"hope this helps"`) | Remove chatbot conversational residue completely. |
+| **38** | Code Quality | Non-descriptive or generic variable name (single-letter or vague identifier) | Rename variable to a descriptive identifier. |
+| **39** | Engineering | Collapsed complex equation or developer typo | Decompose into intermediate terms (`term1`, `num`, `denom`) and fix typos. |
+| **40** | Code Cleanliness | Docstring bloat on simple function or ruff violation | Avoid multi-line docstrings on short math helpers; run standard linter. |
+| **41** | Style | Heavy AI divider banners (`######`, `======`) | Replace with concise single-line comment. |
+| **42** | Engineering | Cryptic micro-optimization in loop or comprehension | Use straightforward forward loops over nested walrus generators. |
+| **43** | Engineering | Missing physical units or unit suffix on constant | Add unit suffix (`_kg`, `_m`, `_pa`, `_kw`) or comment. |
+| **44** | Style | Artificial equation line break when under 140 characters | Keep expressions on a single horizontal line up to 140 chars. |
+| **45** | Engineering | Over-engineered OOP in numerical code | Favor plain dictionaries and data structures over abstract base classes. |
 
 ---
 
@@ -126,26 +134,26 @@ Applies guaranteed, low-risk, formulaic fixes:
 
 ```bash
 # Preview changes safely without touching files
-python scripts/lint_fixer.py . --dry-run
+uv run --no-project python scripts/lint_fixer.py . --dry-run
 
 # Apply safe fixes
-python scripts/lint_fixer.py .
+uv run --no-project python scripts/lint_fixer.py .
 ```
 
 ### 2. Symbol & Dependency Map Generator (`scripts/repo_map.py`)
 Builds a compressed AST-level structural map of codebases for LLM context in under 500 lines:
 ```bash
-python scripts/repo_map.py . -o repo_map.txt
+uv run --no-project python scripts/repo_map.py . -o repo_map.txt
 ```
 
 ### 3. Prompt Minifier (`scripts/minify_instructions.py`)
 Compacts instruction files (`CLAUDE.md`, `.cursorrules`, etc.) while retaining 100% directive strength:
 ```bash
-python scripts/minify_instructions.py templates/INSTRUCTIONS_TEMPLATE.md -i
+uv run --no-project python scripts/minify_instructions.py templates/INSTRUCTIONS_TEMPLATE.md -i
 ```
 
 ### 4. Search Utility (`scripts/grep_keywords.py`)
 Smart directory-aware regex search ignoring cache and build folders:
 ```bash
-python scripts/grep_keywords.py "noqa" . --ext py
+uv run --no-project python scripts/grep_keywords.py "noqa" . --ext py
 ```

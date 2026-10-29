@@ -1,43 +1,37 @@
 #!/usr/bin/env bash
-# =======================================================
-#       Josh's AI Tools Setup for Linux & macOS
-# =======================================================
+# Josh AI Tools Setup for Linux & macOS
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLAUDE_DIR="$HOME/.claude"
-SOURCE_SETTINGS="$SCRIPT_DIR/templates/claude_settings.json"
 CONFIGURATOR="$SCRIPT_DIR/scripts/configure.py"
 
-echo "======================================================="
-echo "        Josh's AI Tools Setup (Linux/macOS)            "
-echo "======================================================="
-echo ""
-
-# Check for Python
-PY_BIN=""
-if command -v python3 >/dev/null 2>&1; then
-    PY_BIN="python3"
-elif command -v python >/dev/null 2>&1; then
-    PY_BIN="python"
-fi
-
-if [ -z "$PY_BIN" ]; then
-    echo "[!] ERROR: Python 3 was not found in your PATH."
-    echo "    Please install Python 3.9+ to run the setup and linter tools."
-    exit 1
-fi
-
-PY_VER="$($PY_BIN --version 2>&1)"
-echo "[OK] Python detected: $PY_VER"
+echo "Josh AI Tools Setup (Linux/macOS)"
 echo "Repo directory: $SCRIPT_DIR"
 echo ""
 
+# Check for uv or Python
+PY_RUNNER=""
+if command -v uv >/dev/null 2>&1; then
+    PY_RUNNER="uv run --no-project python"
+    echo "[OK] uv detected: $(uv --version)"
+elif command -v python3 >/dev/null 2>&1; then
+    PY_RUNNER="python3"
+    echo "[OK] Python detected: $(python3 --version 2>&1)"
+elif command -v python >/dev/null 2>&1; then
+    PY_RUNNER="python"
+    echo "[OK] Python detected: $(python --version 2>&1)"
+else
+    echo "[!] ERROR: Neither uv nor Python 3 was found in your PATH."
+    echo "    Please install uv (https://docs.astral.sh/uv/) or Python 3.9+."
+    exit 1
+fi
+
+echo ""
 echo "Choose configuration mode:"
 echo "  [1] Configure Claude Code only (Global ~/.claude/CLAUDE.md)"
-echo "  [2] Configure ALL AI Tools (Claude, Cursor, Cline, Antigravity, Codex, Windsurf, Copilot, Aider)"
-echo "  [3] Custom Interactive Wizard"
+echo "  [2] Configure ALL AI Tools globally (Claude, Cursor, Cline, Antigravity, Codex, Windsurf, Copilot, Aider)"
+echo "  [3] Custom Interactive Wizard (choose tools, workspace vs global scope)"
 echo ""
 
 read -r -p "Select option [1, 2, or 3, default 2]: " mode_choice
@@ -47,60 +41,34 @@ case "$mode_choice" in
     1)
         echo ""
         echo "[+] Configuring Claude Code..."
-        $PY_BIN "$CONFIGURATOR" --tools claude --scope global
+        $PY_RUNNER "$CONFIGURATOR" --tools claude --scope global
         ;;
     2)
         echo ""
         echo "[+] Configuring ALL supported AI tools..."
-        $PY_BIN "$CONFIGURATOR" --tools all --scope global
+        $PY_RUNNER "$CONFIGURATOR" --tools all --scope global
         ;;
     3)
         echo ""
-        $PY_BIN "$CONFIGURATOR"
+        $PY_RUNNER "$CONFIGURATOR"
         ;;
     *)
         echo ""
         echo "[+] Configuring ALL supported AI tools..."
-        $PY_BIN "$CONFIGURATOR" --tools all --scope global
+        $PY_RUNNER "$CONFIGURATOR" --tools all --scope global
         ;;
 esac
 
-# Handle Claude settings.json template if ~/.claude exists
-echo ""
-DEST_SETTINGS="$CLAUDE_DIR/settings.json"
-if [ -d "$CLAUDE_DIR" ]; then
-    if [ -f "$DEST_SETTINGS" ]; then
-        read -r -p "[?] Claude settings.json already exists at $DEST_SETTINGS. Overwrite? [y/N]: " ow_settings
-        case "$ow_settings" in
-            [Yy]*)
-                cp "$SOURCE_SETTINGS" "$DEST_SETTINGS"
-                echo "[OK] settings.json updated."
-                ;;
-            *)
-                echo "[=] Kept existing settings.json."
-                ;;
-        esac
-    else
-        read -r -p "[?] Install recommended Claude settings.json (bypassPermissions mode, dark theme)? [Y/n]: " inst_settings
-        case "$inst_settings" in
-            [Nn]*)
-                echo "[=] Skipped settings.json."
-                ;;
-            *)
-                cp "$SOURCE_SETTINGS" "$DEST_SETTINGS"
-                echo "[OK] settings.json installed."
-                ;;
-        esac
-    fi
-fi
-
 # Optional vulture install
 echo ""
-read -r -p "[?] Install optional 'vulture' package for unused code detection (rule 21)? [y/N]: " inst_vulture
+read -r -p "[?] Install optional 'vulture' package for unused code detection (used in --level full audits)? [y/N]: " inst_vulture
 case "$inst_vulture" in
     [Yy]*)
-        echo "[+] Running: $PY_BIN -m pip install vulture"
-        $PY_BIN -m pip install vulture || pip install vulture || echo "[!] Could not install vulture automatically. Install manually via pip if needed."
+        if command -v uv >/dev/null 2>&1; then
+            uv tool install vulture || echo "[!] Could not install vulture automatically."
+        else
+            pip install vulture || echo "[!] Could not install vulture automatically."
+        fi
         ;;
     *)
         echo "[=] Skipped vulture installation."
@@ -109,7 +77,7 @@ esac
 
 # Global terminal shortcuts
 echo ""
-read -r -p "[?] Install global shortcuts (ailint, aifix, airepo, aimd, aitree, aisearch, aislice, aidiff, airollback, aisync, aitest, aitokens, aicontext, aisec, aihook) into ~/.local/bin? [Y/n]: " inst_shortcuts
+read -r -p "[?] Install global shortcuts into ~/.local/bin? [Y/n]: " inst_shortcuts
 case "$inst_shortcuts" in
     [Nn]*)
         echo "[=] Skipped global shortcuts."
@@ -128,8 +96,4 @@ case "$inst_shortcuts" in
 esac
 
 echo ""
-echo "======================================================="
-echo "               Setup Completed Successfully!           "
-echo "======================================================="
-echo "All selected AI tools are configured with your rules and linter."
-echo ""
+echo "Setup finished. Selected AI tools configured."

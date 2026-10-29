@@ -28,7 +28,7 @@ def extract_python_symbols(path: Path) -> dict:
             for alias in node.names:
                 symbols["imports"].append(alias.name)
         elif isinstance(node, ast.ImportFrom) and node.module:
-            names = ", ".join(a.name for a in node.names)
+            names = ", ".join(alias_node.name for alias_node in node.names)
             symbols["imports"].append(f"{node.module}: {names}")
         elif isinstance(node, ast.FunctionDef) or isinstance(node, ast.AsyncFunctionDef):
             sig = _format_func_sig(node)
@@ -39,7 +39,7 @@ def extract_python_symbols(path: Path) -> dict:
             methods = []
             doc = ast.get_docstring(node)
             summary = doc.splitlines()[0] if doc else ""
-            bases = [ast.unparse(b) for b in node.bases]
+            bases = [ast.unparse(base_node) for base_node in node.bases]
             base_str = f"({', '.join(bases)})" if bases else ""
             for item in node.body:
                 if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -52,12 +52,12 @@ def extract_python_symbols(path: Path) -> dict:
 
 def _format_func_sig(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
     args = []
-    for a in node.args.args:
-        ann = f": {ast.unparse(a.annotation)}" if a.annotation else ""
-        args.append(f"{a.arg}{ann}")
-    ret = f" -> {ast.unparse(node.returns)}" if node.returns else ""
+    for arg_node in node.args.args:
+        ann = f": {ast.unparse(arg_node.annotation)}" if arg_node.annotation else ""
+        args.append(f"{arg_node.arg}{ann}")
+    ret_str = f" -> {ast.unparse(node.returns)}" if node.returns else ""
     prefix = "async " if isinstance(node, ast.AsyncFunctionDef) else ""
-    return f"{prefix}def {node.name}({', '.join(args)}){ret}"
+    return f"{prefix}def {node.name}({', '.join(args)}){ret_str}"
 
 
 def generate_map(root: Path, max_lines: int = 300) -> str:

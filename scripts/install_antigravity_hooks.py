@@ -1,27 +1,34 @@
 #!/usr/bin/env python3
 """Installer for Antigravity lifecycle hooks that triggers linters on task completion."""
+from __future__ import annotations
+
 import argparse
 import json
 import os
 import platform
+import shutil
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LINTER_SCRIPT = REPO_ROOT / "scripts" / "claudemd_linter.py"
 IS_WINDOWS = platform.system() == "Windows"
-PYTHON_CMD = "python" if IS_WINDOWS else "python3"
 
 
 def get_user_home() -> Path:
     return Path(os.environ.get("USERPROFILE" if IS_WINDOWS else "HOME", Path.home()))
 
 
-def get_hook_paths(workspace: Path) -> dict[str, Path]:
+def get_hook_paths(workspace: Path) -> dict[str, list[Path]]:
     home = get_user_home()
     return {
-        "workspace": workspace / ".agents" / "hooks.json",
-        "global": home / ".gemini" / "config" / "hooks.json",
+        "workspace": [
+            workspace / ".agent" / "hooks.json",
+            workspace / ".agents" / "hooks.json",
+        ],
+        "global": [
+            home / ".gemini" / "config" / "hooks.json",
+        ],
     }
 
 
@@ -65,7 +72,7 @@ def remove_hook(dest: Path) -> bool:
             dest.write_text(json.dumps(data, indent=2), encoding="utf-8")
             return True
     except Exception:
-        pass
+        return False
     return False
 
 
@@ -101,14 +108,20 @@ def main() -> None:
     paths = get_hook_paths(args.workspace.resolve())
     targets: list[tuple[str, Path]] = []
     if args.scope in ("workspace", "both"):
-        targets.append(("Workspace", paths["workspace"]))
+        for p in paths["workspace"]:
+            targets.append(("Workspace", p))
     if args.scope in ("global", "both"):
-        targets.append(("Global", paths["global"]))
+        for p in paths["global"]:
+            targets.append(("Global", p))
 
     linter_path = str(LINTER_SCRIPT)
     if " " in linter_path:
         linter_path = f'"{linter_path}"'
-    cmd = f"{PYTHON_CMD} {linter_path} . --diff"
+    if shutil.which("uv"):
+        cmd = f"uv run --no-project python {linter_path} . --diff"
+    else:
+        py_bin = "python" if IS_WINDOWS else "python3"
+        cmd = f"{py_bin} {linter_path} . --diff"
 
     for scope_name, path in targets:
         if args.remove:
