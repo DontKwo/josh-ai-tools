@@ -84,13 +84,19 @@ def find_local_modules(project_root: Path) -> set[str]:
     """Find all local module and package names defined within the project root."""
     local_names: set[str] = set()
 
-    for item in project_root.iterdir():
-        if item.is_file() and item.suffix == ".py":
-            local_names.add(item.stem)
-        elif item.is_dir() and not item.name.startswith((".", "__")):
-            # If directory has .py files or __init__.py, it's a local package/namespace
-            if (item / "__init__.py").exists() or any(item.glob("*.py")):
-                local_names.add(item.name)
+    try:
+        for item in project_root.iterdir():
+            try:
+                if item.is_file() and item.suffix == ".py":
+                    local_names.add(item.stem)
+                elif item.is_dir() and not item.name.startswith((".", "__")):
+                    # If directory has .py files or __init__.py, it's a local package/namespace
+                    if (item / "__init__.py").exists() or any(item.glob("*.py")):
+                        local_names.add(item.name)
+            except PermissionError:
+                continue
+    except PermissionError:
+        return local_names
 
     return local_names
 

@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Grilling shortcut
+exec "$(dirname "$0")/../scripts/grill_user.py" "$@"
