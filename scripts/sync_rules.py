@@ -7,6 +7,7 @@ import os
 import platform
 import re
 import shutil
+import stat
 import sys
 from pathlib import Path
 
@@ -54,13 +55,19 @@ def get_rule_targets(ws: Path) -> dict[str, list[Path]]:
 def find_most_recent_source(targets: dict[str, list[Path]]) -> Path | None:
     best_file: Path | None = None
     best_mtime: float = -1.0
+    seen: set[Path] = set()
     for file_list in targets.values():
         for path in file_list:
-            if path.is_file():
-                mtime = path.stat().st_mtime
-                if mtime > best_mtime:
-                    best_mtime = mtime
+            if path in seen:
+                continue
+            seen.add(path)
+            try:
+                st = path.stat()
+                if stat.S_ISREG(st.st_mode) and st.st_mtime > best_mtime:
+                    best_mtime = st.st_mtime
                     best_file = path
+            except OSError:
+                continue
     return best_file
 
 
