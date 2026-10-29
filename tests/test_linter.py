@@ -1,5 +1,4 @@
 """Unit test suite for claudemd_linter, lint_fixer, repo_map, and clean_encoding."""
-import re
 import tempfile
 import unittest
 from pathlib import Path
