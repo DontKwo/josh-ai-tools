@@ -101,8 +101,10 @@ class TestClaudemdLinter(unittest.TestCase):
         self.assertNotIn(17, codes)
 
     def test_rule_24_todos(self) -> None:
-        codes = self._scan_snippet("# TODO: Implement this later\nx = 1\n")
-        self.assertIn(24, codes)
+        for keyword in ("TODO", "FIXME", "HACK", "XXX"):
+            with self.subTest(keyword=keyword):
+                codes = self._scan_snippet(f"# {keyword}: mock comment\nx = 1\n")
+                self.assertIn(24, codes)
 
     def test_rule_25_print_statement(self) -> None:
         codes = self._scan_snippet("def run() -> None:\n    print('debug')\n")
