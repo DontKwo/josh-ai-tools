@@ -6,7 +6,6 @@ enabling one-key rollback and diff previews if an AI hallucinates or breaks test
 import argparse
 import datetime
 import json
-import os
 import shutil
 import sys
 from pathlib import Path

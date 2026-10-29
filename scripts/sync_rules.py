@@ -7,10 +7,15 @@ import os
 import platform
 import re
 import shutil
+import stat
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Add scripts directory to path to allow importing utils
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+from utils import format_command_path
 TEMPLATE_PATH = REPO_ROOT / "templates" / "INSTRUCTIONS_TEMPLATE.md"
 ENGINEERING_PATH = REPO_ROOT / "templates" / "ENGINEERING_RULES.md"
 PYTHON_RULES_PATH = REPO_ROOT / "templates" / "PYTHON_RULES.md"
@@ -50,25 +55,24 @@ def get_rule_targets(ws: Path) -> dict[str, list[Path]]:
 def find_most_recent_source(targets: dict[str, list[Path]]) -> Path | None:
     best_file: Path | None = None
     best_mtime: float = -1.0
+    seen: set[Path] = set()
     for file_list in targets.values():
         for path in file_list:
-            if path.is_file():
-                mtime = path.stat().st_mtime
-                if mtime > best_mtime:
-                    best_mtime = mtime
+            if path in seen:
+                continue
+            seen.add(path)
+            try:
+                st = path.stat()
+                if stat.S_ISREG(st.st_mode) and st.st_mtime > best_mtime:
+                    best_mtime = st.st_mtime
                     best_file = path
+            except OSError:
+                continue
     return best_file
 
 
 def strip_frontmatter(content: str) -> str:
     return re.sub(r"^---\s*\n.*?\n---\s*\n", "", content, flags=re.DOTALL)
-
-
-def format_command_path(path: Path) -> str:
-    path_str = str(path)
-    if " " in path_str:
-        return f'"{path_str}"'
-    return path_str
 
 
 def expand_template_variables(content: str) -> str:
@@ -87,8 +91,7 @@ def expand_template_variables(content: str) -> str:
     return expanded.replace("<project_root>", ".")
 
 
-def format_for_target(target: Path, core_content: str) -> str:
-    expanded = expand_template_variables(core_content)
+def format_for_target(target: Path, expanded: str) -> str:
     if target.suffix == ".mdc":
         header = "---\ndescription: Josh AI Development and Linting Rules\nglobs: *\nalwaysApply: true\n---\n\n"
         return header + expanded
@@ -110,6 +113,7 @@ def sync_rules(source: Path | None, ws: Path, dry_run: bool) -> int:
 
     raw_text = src_file.read_text(encoding="utf-8", errors="replace")
     core_rules = strip_frontmatter(raw_text)
+    expanded_rules = expand_template_variables(core_rules)
 
     synced_count = 0
     seen_paths: set[Path] = set()
@@ -121,7 +125,7 @@ def sync_rules(source: Path | None, ws: Path, dry_run: bool) -> int:
             seen_paths.add(resolved_dest)
             if not dest.parent.exists() and not dest.exists():
                 continue
-            new_text = format_for_target(dest, core_rules)
+            new_text = format_for_target(dest, expanded_rules)
             if dest.is_file() and dest.read_text(encoding="utf-8", errors="replace") == new_text:
                 continue
             if dry_run:

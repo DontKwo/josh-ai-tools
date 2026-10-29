@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from scripts.dir_overview import count_lines_and_size
 from scripts.install_antigravity_hooks import build_hook_config, install_hook, remove_hook
 from scripts.pack_context import pack_files
 from scripts.secret_sanitizer import mask_secrets, scan_file
@@ -106,6 +107,20 @@ class TestNewTools(unittest.TestCase):
         self.assertIsNotNone(found)
         if found:
             self.assertEqual(found.resolve(), fake_py.resolve())
+
+    def test_count_lines_and_size(self) -> None:
+        """Test count_lines_and_size functionality."""
+        temp_file = self.temp_dir / "test_count.txt"
+        temp_file.write_text("line 1\nline 2\nline 3\n", encoding="utf-8")
+        lines, size_kb = count_lines_and_size(temp_file)
+        self.assertEqual(lines, 3)
+        self.assertGreater(size_kb, 0.0)
+
+        # Test error condition (non-existent file)
+        missing_file = self.temp_dir / "does_not_exist.txt"
+        lines_err, size_kb_err = count_lines_and_size(missing_file)
+        self.assertEqual(lines_err, 0)
+        self.assertEqual(size_kb_err, 0.0)
 
 
 if __name__ == "__main__":

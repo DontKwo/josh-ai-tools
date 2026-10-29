@@ -1,10 +1,9 @@
 """Unit test suite for claudemd_linter, lint_fixer, repo_map, and clean_encoding."""
-import re
 import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.claudemd_linter import scan_file, noqa_codes, suppressed, parse_cli_args, LEVEL_RULES
+from scripts.claudemd_linter import scan_file, suppressed, parse_cli_args, LEVEL_RULES, noqa_codes
 from scripts.lint_fixer import fix_line, UNICODE_REPLACEMENTS, condense_docstrings
 from scripts.repo_map import generate_map
 from scripts.clean_encoding import clean_content
@@ -101,12 +100,27 @@ class TestClaudemdLinter(unittest.TestCase):
         self.assertNotIn(17, codes)
 
     def test_rule_24_todos(self) -> None:
-        codes = self._scan_snippet("# TODO: Implement this later\nx = 1\n")
-        self.assertIn(24, codes)
+        for keyword in ("TODO", "FIXME", "HACK", "XXX"):
+            with self.subTest(keyword=keyword):
+                codes = self._scan_snippet(f"# {keyword}: mock comment\nx = 1\n")
+                self.assertIn(24, codes)
 
     def test_rule_25_print_statement(self) -> None:
         codes = self._scan_snippet("def run() -> None:\n    print('debug')\n")
         self.assertIn(25, codes)
+
+    def test_noqa_codes_parsing(self) -> None:
+        self.assertIsNone(noqa_codes(""))
+        self.assertIsNone(noqa_codes("some random text"))
+        self.assertEqual(noqa_codes("# noqa"), "ALL")
+        self.assertEqual(noqa_codes("# noqa: 25"), {25})
+        self.assertEqual(noqa_codes("# noqa: 25, 30"), {25, 30})
+        self.assertEqual(noqa_codes("// noqa: 10, 11"), {10, 11})
+        self.assertEqual(noqa_codes("<!-- noqa: 41 -->"), {41})
+        self.assertEqual(noqa_codes("# noqa: abc"), set())
+        self.assertEqual(noqa_codes("#  noqa :  1  , 2 "), "ALL")
+        self.assertEqual(noqa_codes("# NOQA: 10, 20"), {10, 20})
+        self.assertEqual(noqa_codes("<!--noqa:41-->"), {41})
 
     def test_noqa_suppression(self) -> None:
         # Line with print and noqa: 25
