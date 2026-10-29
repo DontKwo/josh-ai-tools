@@ -6,6 +6,7 @@ and repairs broken/stale paths across Claude, Cursor, Cline, Antigravity, and Co
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import os
 import platform
@@ -178,12 +179,7 @@ def run_diagnostics(auto_heal: bool = False, clean_cache: bool = False) -> None:
 
     # 4. Check Vulture
     print("\n[4] Optional AST Dependencies:")
-    vulture_ok = False
-    try:
-        import vulture  # noqa: 22
-        vulture_ok = True
-    except ImportError:
-        vulture_ok = False
+    vulture_ok = importlib.util.find_spec("vulture") is not None
     if not vulture_ok and shutil.which("vulture"):
         vulture_ok = True
 
