@@ -4,6 +4,7 @@ Scans files for double-encoded UTF-8/Windows-1252 sequences, corrupted placehold
 and encoding artifacts, restoring clean text without data loss.
 """
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -117,10 +118,16 @@ def main() -> None:
         print(f"Error: Target path not found: {target}")
         sys.exit(1)
 
-    files = [target] if target.is_file() else [
-        f for f in target.rglob("*")
-        if f.is_file() and SKIP_DIRS.isdisjoint(f.parts) and f.suffix in (".py", ".txt", ".md", ".json", ".csv", ".html", ".js", ".ts")
-    ]
+    if target.is_file():
+        files = [target]
+    else:
+        files = []
+        valid_exts = (".py", ".txt", ".md", ".json", ".csv", ".html", ".js", ".ts")
+        for root, dirs, filenames in os.walk(target):
+            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+            for filename in filenames:
+                if Path(filename).suffix in valid_exts:
+                    files.append(Path(root) / filename)
 
     print("=" * 60)
     print("      Josh's AI Tools Mojibake & Encoding Cleaner")
