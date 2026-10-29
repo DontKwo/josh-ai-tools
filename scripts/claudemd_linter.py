@@ -1,7 +1,6 @@
 """Lint Python, Web, Systems code, and Markdown files for AI-writing signs and code standards.
 Includes git diff-scoped linting, incremental caching, parallel processing, and 300+ AI guards.
 """
-from __future__ import annotations
 
 import ast
 import hashlib

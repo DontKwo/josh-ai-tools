@@ -1,19 +1,16 @@
 """Unit test suite for claudemd_linter, lint_fixer, repo_map, and clean_encoding."""
-import re
 import tempfile
 import unittest
 from pathlib import Path
 
 from scripts.claudemd_linter import scan_file, noqa_codes, suppressed, parse_cli_args, LEVEL_RULES
-from scripts.lint_fixer import fix_line, UNICODE_REPLACEMENTS, condense_docstrings
+from scripts.lint_fixer import fix_line, condense_docstrings
 from scripts.repo_map import generate_map
 from scripts.clean_encoding import clean_content
 from scripts.prune_dead_code import find_unused_imports, prune_unused_imports_in_file
 from scripts.boost_types import boost_file
 from scripts.check_dependencies import scan_dependencies
 from scripts.to_markdown import convert_file_to_markdown
-from scripts.dir_overview import render_tree
-from scripts.fast_search import search_in_file
 from scripts.redact_diff import redact_diff_content
 from scripts.rollback import save_checkpoint, restore_checkpoint, list_checkpoints
 

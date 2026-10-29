@@ -1,22 +1,17 @@
 #!/usr/bin/env python3
 """Installer for Antigravity lifecycle hooks that triggers linters on task completion."""
-from __future__ import annotations
 
 import argparse
 import json
-import os
-import platform
 import shutil
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from utils import IS_WINDOWS, get_user_home
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LINTER_SCRIPT = REPO_ROOT / "scripts" / "claudemd_linter.py"
-IS_WINDOWS = platform.system() == "Windows"
-
-
-def get_user_home() -> Path:
-    return Path(os.environ.get("USERPROFILE" if IS_WINDOWS else "HOME", Path.home()))
 
 
 def get_hook_paths(workspace: Path) -> dict[str, list[Path]]:

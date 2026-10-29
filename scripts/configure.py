@@ -2,28 +2,23 @@
 """Configures AI developer tools (Claude, Cursor, Cline, Antigravity, Codex, etc.)
 with Josh's unified style rules and automated AST linter instructions.
 """
-from __future__ import annotations
 
 import argparse
 import json
-import os
 import platform
 import re
 import shutil
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from utils import IS_WINDOWS, get_user_home
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_PATH = REPO_ROOT / "templates" / "INSTRUCTIONS_TEMPLATE.md"
 ENGINEERING_PATH = REPO_ROOT / "templates" / "ENGINEERING_RULES.md"
 PYTHON_RULES_PATH = REPO_ROOT / "templates" / "PYTHON_RULES.md"
 LINTER_SCRIPT = REPO_ROOT / "scripts" / "claudemd_linter.py"
-
-IS_WINDOWS = platform.system() == "Windows"
-
-
-def get_user_home() -> Path:
-    return Path(os.environ.get("USERPROFILE" if IS_WINDOWS else "HOME", Path.home()))
 
 
 # Registry of supported AI tools and target paths

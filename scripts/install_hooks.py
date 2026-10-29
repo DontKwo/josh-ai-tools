@@ -2,17 +2,18 @@
 """Installs or uninstalls Git pre-commit enforcement hooks.
 Ensures claudemd_linter.py is executed automatically on staged files before commit.
 """
-from __future__ import annotations
 
 import argparse
-import platform
 import stat
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from utils import IS_WINDOWS
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LINTER_SCRIPT = REPO_ROOT / "scripts" / "claudemd_linter.py"
 
-IS_WINDOWS = platform.system() == "Windows"
 PYTHON_CMD = "python" if IS_WINDOWS else "python3"
 
 

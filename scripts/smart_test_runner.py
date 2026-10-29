@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 """AST-aware test impact runner that executes tests for modified code."""
-from __future__ import annotations
 
 import argparse
 import ast
