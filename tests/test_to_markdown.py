@@ -35,11 +35,8 @@ class TestExtractPdfFallback(unittest.TestCase):
         self.assertEqual(result[0], "Hello World")
 
     def test_valid_zlib_streams_max_pages(self) -> None:
-        # Create multiple streams to test max_pages
-        # The function groups chunks: per_page = max(1, len(decompressed_chunks) // 4)
-        # So we need at least 5 chunks to have more than 1 page.
-        # Wait, if len is 5, per_page = 1. So 5 pages.
-        # Let's create 5 streams.
+        # Create multiple streams to test max_pages.
+        # The function groups chunks into pages.
 
         pdf_content = b""
         for i in range(5):
