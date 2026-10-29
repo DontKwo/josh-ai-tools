@@ -108,6 +108,19 @@ class TestClaudemdLinter(unittest.TestCase):
         codes = self._scan_snippet("def run() -> None:\n    print('debug')\n")
         self.assertIn(25, codes)
 
+    def test_noqa_codes_parsing(self) -> None:
+        self.assertIsNone(noqa_codes(""))
+        self.assertIsNone(noqa_codes("some random text"))
+        self.assertEqual(noqa_codes("# noqa"), "ALL")
+        self.assertEqual(noqa_codes("# noqa: 25"), {25})
+        self.assertEqual(noqa_codes("# noqa: 25, 30"), {25, 30})
+        self.assertEqual(noqa_codes("// noqa: 10, 11"), {10, 11})
+        self.assertEqual(noqa_codes("<!-- noqa: 41 -->"), {41})
+        self.assertEqual(noqa_codes("# noqa: abc"), set())
+        self.assertEqual(noqa_codes("#  noqa :  1  , 2 "), "ALL")
+        self.assertEqual(noqa_codes("# NOQA: 10, 20"), {10, 20})
+        self.assertEqual(noqa_codes("<!--noqa:41-->"), {41})
+
     def test_noqa_suppression(self) -> None:
         # Line with print and noqa: 25
         codes = self._scan_snippet("def run() -> None:\n    print('debug')  # noqa: 25\n")
