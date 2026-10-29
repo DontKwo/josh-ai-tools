@@ -6,7 +6,6 @@ directly as native MCP tools to Claude, Cursor, Windsurf, Cline, and Antigravity
 from __future__ import annotations
 
 import json
-import os
 import platform
 import re
 import shutil
