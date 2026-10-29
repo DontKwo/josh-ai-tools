@@ -51,23 +51,24 @@ def clean_content(content: str, degrees_to_word: bool = False) -> tuple[str, lis
 
     # 1. Clean mojibake sequences
     for bad, good in MOJIBAKE_MAP.items():
-        if bad in new_content:
-            count = new_content.count(bad)
+        count = new_content.count(bad)
+        if count > 0:
             new_content = new_content.replace(bad, good)
             changes.append(f"Replaced {count}x '{bad}' -> '{good}'")
 
     # 2. Clean corrupted placeholders
     for bad_ph, good_ph in PLACEHOLDER_MAP.items():
-        if bad_ph in new_content:
-            count = new_content.count(bad_ph)
+        count = new_content.count(bad_ph)
+        if count > 0:
             new_content = new_content.replace(bad_ph, good_ph)
             changes.append(f"Replaced {count}x {bad_ph} -> {good_ph}")
 
     # 3. Optional: replace degree symbols with word 'degrees'
-    if degrees_to_word and "°" in new_content:
+    if degrees_to_word:
         count = new_content.count("°")
-        new_content = new_content.replace("°", " degrees")
-        changes.append(f"Replaced {count}x '°' -> ' degrees'")
+        if count > 0:
+            new_content = new_content.replace("°", " degrees")
+            changes.append(f"Replaced {count}x '°' -> ' degrees'")
 
     return new_content, changes
 
