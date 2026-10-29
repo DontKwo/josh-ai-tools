@@ -87,8 +87,7 @@ def expand_template_variables(content: str) -> str:
     return expanded.replace("<project_root>", ".")
 
 
-def format_for_target(target: Path, core_content: str) -> str:
-    expanded = expand_template_variables(core_content)
+def format_for_target(target: Path, expanded: str) -> str:
     if target.suffix == ".mdc":
         header = "---\ndescription: Josh AI Development and Linting Rules\nglobs: *\nalwaysApply: true\n---\n\n"
         return header + expanded
@@ -110,6 +109,7 @@ def sync_rules(source: Path | None, ws: Path, dry_run: bool) -> int:
 
     raw_text = src_file.read_text(encoding="utf-8", errors="replace")
     core_rules = strip_frontmatter(raw_text)
+    expanded_rules = expand_template_variables(core_rules)
 
     synced_count = 0
     seen_paths: set[Path] = set()
@@ -121,7 +121,7 @@ def sync_rules(source: Path | None, ws: Path, dry_run: bool) -> int:
             seen_paths.add(resolved_dest)
             if not dest.parent.exists() and not dest.exists():
                 continue
-            new_text = format_for_target(dest, core_rules)
+            new_text = format_for_target(dest, expanded_rules)
             if dest.is_file() and dest.read_text(encoding="utf-8", errors="replace") == new_text:
                 continue
             if dry_run:
