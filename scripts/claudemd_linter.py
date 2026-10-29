@@ -694,6 +694,142 @@ def detect_module_graph_issues(files: list[Path], root: Path, violations: list[t
             violations.append((f, 1, 30))
 
 
+
+def _check_ast_import_from(node: ast.ImportFrom, path: Path, line: str, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
+    if path.name not in SPINBOX_EXEMPT_FILES:
+        if any(alias.name in ("QSpinBox", "QDoubleSpinBox") for alias in node.names):
+            if not suppressed(line, 31):
+                violations.append((path, node.lineno, 31))
+
+def _check_ast_except_handler(node: ast.ExceptHandler, path: Path, line: str, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
+    if node.type is None and not suppressed(line, 9):
+        violations.append((path, node.lineno, 9))
+    if len(node.body) == 1 and isinstance(node.body[0], ast.Pass) and not suppressed(line, 10):
+        violations.append((path, node.lineno, 10))
+    caught_name = node.type.id if isinstance(node.type, ast.Name) else None
+    for stmt in node.body:
+        if isinstance(stmt, ast.Raise) and stmt.exc is not None and stmt.cause is None:
+            raised_name = stmt.exc.func.id if isinstance(stmt.exc, ast.Call) and isinstance(stmt.exc.func, ast.Name) else None
+            if raised_name and raised_name != caught_name:
+                raise_line = lines[stmt.lineno - 1] if stmt.lineno - 1 < len(lines) else ""
+                if not suppressed(raise_line, 27):
+                    violations.append((path, stmt.lineno, 27))
+
+def _check_ast_function_def(node: ast.FunctionDef, path: Path, line: str, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
+    if len(node.body) == 1 and isinstance(node.body[0], ast.Pass) and not suppressed(line, 10):
+        violations.append((path, node.lineno, 10))
+    missing = any(param_arg.annotation is None for param_arg in node.args.args if param_arg.arg != "self")
+    if node.returns is None:
+        missing = True
+    if missing and not suppressed(line, 11):
+        violations.append((path, node.lineno, 11))
+    for default in node.args.defaults:
+        if isinstance(default, (ast.List, ast.Dict, ast.Set)) and not suppressed(line, 14):
+            violations.append((path, node.lineno, 14))
+    docstring = ast.get_docstring(node)
+    if docstring and docstring.count("\n") > 6 and not suppressed(line, 18):
+        violations.append((path, node.lineno, 18))
+    if docstring and len(node.body) <= 5:
+        if re.search(r"\b(Args|Parameters|Returns|Raises):\s*\n", docstring) and not suppressed(line, 40):
+            violations.append((path, node.lineno, 40))
+    if getattr(node, "col_offset", 0) > 0:
+        for sub in ast.walk(node):
+            if isinstance(sub, (ast.Import, ast.ImportFrom)):
+                subline = lines[sub.lineno - 1] if sub.lineno - 1 < len(lines) else ""
+                if not suppressed(subline, 13):
+                    violations.append((path, sub.lineno, 13))
+
+def _check_ast_return(node: ast.Return, path: Path, line: str, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
+    if isinstance(node.value, ast.BinOp):
+        bin_ops = [sub for sub in ast.walk(node.value) if isinstance(sub, ast.BinOp)]
+        is_path_join = any(
+            isinstance(op.op, ast.Div) and isinstance(op.right, ast.Constant) and isinstance(op.right.value, str)
+            for op in bin_ops
+        )
+        if not is_path_join and len(bin_ops) >= 4 and not suppressed(line, 39):
+            violations.append((path, node.lineno, 39))
+
+def _check_ast_comprehension(node: ast.AST, path: Path, line: str, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
+    has_walrus = any(isinstance(sub, ast.NamedExpr) for sub in ast.walk(node))
+    has_multi_if = any(len(gen.ifs) > 1 for gen in getattr(node, "generators", []))
+    if (has_walrus or has_multi_if) and not suppressed(line, 42):
+        violations.append((path, node.lineno, 42))
+
+def _check_ast_assign(node: ast.Assign, path: Path, line: str, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
+    if getattr(node, "end_lineno", node.lineno) > node.lineno:
+        has_math = any(isinstance(sub, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow)) for sub in ast.walk(node.value))
+        if has_math:
+            raw_chunk = " ".join(lines[node.lineno - 1 : node.end_lineno])
+            compact_chunk = " ".join(raw_chunk.split())
+            if len(compact_chunk) <= 140 and not suppressed(line, 44):
+                violations.append((path, node.lineno, 44))
+
+def _check_ast_class_def(node: ast.ClassDef, path: Path, line: str, tree: ast.AST, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
+    has_abc = any(_base_name(base_node) in ("ABC", "ABCMeta") for base_node in node.bases)
+    has_abc = has_abc or any(kw.arg == "metaclass" and _base_name(kw.value) in ("ABC", "ABCMeta") for kw in node.keywords)
+    if has_abc:
+        has_calc = any(
+            isinstance(sub, ast.FunctionDef)
+            and (sub.name.startswith("calc_") or any(kw in sub.name.lower() for kw in CALC_NAME_KEYWORDS))
+            for sub in ast.iter_child_nodes(tree)
+        )
+        if has_calc and not suppressed(line, 45):
+            violations.append((path, node.lineno, 45))
+
+def _check_ast_compare(node: ast.Compare, path: Path, line: str, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
+    for op, comparator in zip(node.ops, node.comparators):
+        if isinstance(op, (ast.Eq, ast.NotEq)) and isinstance(comparator, ast.Constant) and comparator.value is None:
+            if not suppressed(line, 15):
+                violations.append((path, node.lineno, 15))
+
+def _check_ast_name(node: ast.Name, path: Path, line: str, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
+    if isinstance(node.ctx, ast.Store):
+        var_name = node.id
+        if not (var_name.startswith("__") and var_name.endswith("__")) and var_name not in ALLOWED_SHORT_VARS:
+            if len(var_name) == 1 or var_name.lower() in VAGUE_VAR_NAMES:
+                if not suppressed(line, 38):
+                    violations.append((path, node.lineno, 38))
+
+def _check_ast_call(node: ast.Call, path: Path, line: str, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
+    if isinstance(node.func, ast.Attribute) and node.func.attr == "format":
+        if not suppressed(line, 16):
+            violations.append((path, node.lineno, 16))
+    if isinstance(node.func, ast.Attribute) and node.func.attr == "setToolTip":
+        if node.args and _is_string_literal(node.args[0]) and not suppressed(line, 23):
+            violations.append((path, node.lineno, 23))
+    if isinstance(node.func, ast.Name) and node.func.id == "print" and not suppressed(line, 25):
+        violations.append((path, node.lineno, 25))
+    if (isinstance(node.func, ast.Attribute) and node.func.attr == "setDecimals"
+            and path.name not in SPINBOX_EXEMPT_FILES and not suppressed(line, 34)):
+        if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, int):
+            if node.args[0].value < SPINBOX_MAX_DECIMALS:
+                violations.append((path, node.lineno, 34))
+
+def _check_ast_constant(node: ast.Constant, path: Path, line: str, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
+    if isinstance(node.value, str):
+        if HARDCODED_PATH_RE.match(node.value) and not suppressed(line, 26):
+            violations.append((path, node.lineno, 26))
+        if HEX_COLOR_RE.match(node.value) and "theme" not in path.name.lower() and not suppressed(line, 28):
+            violations.append((path, node.lineno, 28))
+
+def _check_ast_binop(node: ast.BinOp, path: Path, line: str, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
+    if isinstance(node.op, ast.Mod) and isinstance(node.left, ast.Constant):
+        if isinstance(node.left.value, str) and not suppressed(line, 16):
+            violations.append((path, node.lineno, 16))
+
+def _check_ast_try(node: ast.Try, path: Path, line: str, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
+    for body_node in node.body:
+        if isinstance(body_node, (ast.Import, ast.ImportFrom)):
+            subline = lines[body_node.lineno - 1] if body_node.lineno - 1 < len(lines) else ""
+            if not suppressed(subline, 22):
+                violations.append((path, body_node.lineno, 22))
+    for handler in node.handlers:
+        for body_node in handler.body:
+            if isinstance(body_node, (ast.Import, ast.ImportFrom)):
+                subline = lines[body_node.lineno - 1] if body_node.lineno - 1 < len(lines) else ""
+                if not suppressed(subline, 22):
+                    violations.append((path, body_node.lineno, 22))
+
 # Category D: Python AST checks
 def scan_python_ast(path: Path, source: str, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
     try:
@@ -729,140 +865,32 @@ def scan_python_ast(path: Path, source: str, lines: list[str], violations: list[
     for node in ast.walk(tree):
         line = lines[node.lineno - 1] if getattr(node, "lineno", 0) and node.lineno - 1 < len(lines) else ""
 
-        if isinstance(node, ast.ImportFrom) and path.name not in SPINBOX_EXEMPT_FILES:
-            if any(alias.name in ("QSpinBox", "QDoubleSpinBox") for alias in node.names):
-                if not suppressed(line, 31):
-                    violations.append((path, node.lineno, 31))
-
-        if isinstance(node, ast.ExceptHandler):
-            if node.type is None and not suppressed(line, 9):
-                violations.append((path, node.lineno, 9))
-            if len(node.body) == 1 and isinstance(node.body[0], ast.Pass) and not suppressed(line, 10):
-                violations.append((path, node.lineno, 10))
-            caught_name = node.type.id if isinstance(node.type, ast.Name) else None
-            for stmt in node.body:
-                if isinstance(stmt, ast.Raise) and stmt.exc is not None and stmt.cause is None:
-                    raised_name = stmt.exc.func.id if isinstance(stmt.exc, ast.Call) and isinstance(stmt.exc.func, ast.Name) else None
-                    if raised_name and raised_name != caught_name:
-                        raise_line = lines[stmt.lineno - 1] if stmt.lineno - 1 < len(lines) else ""
-                        if not suppressed(raise_line, 27):
-                            violations.append((path, stmt.lineno, 27))
-
-        if isinstance(node, ast.FunctionDef):
-            if len(node.body) == 1 and isinstance(node.body[0], ast.Pass) and not suppressed(line, 10):
-                violations.append((path, node.lineno, 10))
-            missing = any(param_arg.annotation is None for param_arg in node.args.args if param_arg.arg != "self")
-            if node.returns is None:
-                missing = True
-            if missing and not suppressed(line, 11):
-                violations.append((path, node.lineno, 11))
-            for default in node.args.defaults:
-                if isinstance(default, (ast.List, ast.Dict, ast.Set)) and not suppressed(line, 14):
-                    violations.append((path, node.lineno, 14))
-            docstring = ast.get_docstring(node)
-            if docstring and docstring.count("\n") > 6 and not suppressed(line, 18):
-                violations.append((path, node.lineno, 18))
-            # Rule 40: AI docstring bloat (Args/Returns on short helpers)
-            if docstring and len(node.body) <= 5:
-                if re.search(r"\b(Args|Parameters|Returns|Raises):\s*\n", docstring) and not suppressed(line, 40):
-                    violations.append((path, node.lineno, 40))
-
-        if isinstance(node, ast.FunctionDef) and getattr(node, "col_offset", 0) > 0:
-            for sub in ast.walk(node):
-                if isinstance(sub, (ast.Import, ast.ImportFrom)):
-                    subline = lines[sub.lineno - 1] if sub.lineno - 1 < len(lines) else ""
-                    if not suppressed(subline, 13):
-                        violations.append((path, sub.lineno, 13))
-
-        # Rule 39: Collapsed complex equation (un-decomposed)
-        if isinstance(node, ast.Return) and isinstance(node.value, ast.BinOp):
-            bin_ops = [sub for sub in ast.walk(node.value) if isinstance(sub, ast.BinOp)]
-            is_path_join = any(
-                isinstance(op.op, ast.Div) and isinstance(op.right, ast.Constant) and isinstance(op.right.value, str)
-                for op in bin_ops
-            )
-            if not is_path_join and len(bin_ops) >= 4 and not suppressed(line, 39):
-                violations.append((path, node.lineno, 39))
-
-        # Rule 42: Cryptic micro-optimization in loop or comprehension
-        if isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
-            has_walrus = any(isinstance(sub, ast.NamedExpr) for sub in ast.walk(node))
-            has_multi_if = any(len(gen.ifs) > 1 for gen in node.generators)
-            if (has_walrus or has_multi_if) and not suppressed(line, 42):
-                violations.append((path, node.lineno, 42))
-
-        # Rule 44: Artificial equation line break
-        if isinstance(node, ast.Assign) and getattr(node, "end_lineno", node.lineno) > node.lineno:
-            has_math = any(isinstance(sub, (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.Pow)) for sub in ast.walk(node.value))
-            if has_math:
-                raw_chunk = " ".join(lines[node.lineno - 1 : node.end_lineno])
-                compact_chunk = " ".join(raw_chunk.split())
-                if len(compact_chunk) <= 140 and not suppressed(line, 44):
-                    violations.append((path, node.lineno, 44))
-
-        # Rule 45: Over-engineered OOP in numerical scripts
-        if isinstance(node, ast.ClassDef):
-            has_abc = any(_base_name(base_node) in ("ABC", "ABCMeta") for base_node in node.bases)
-            has_abc = has_abc or any(kw.arg == "metaclass" and _base_name(kw.value) in ("ABC", "ABCMeta") for kw in node.keywords)
-            if has_abc:
-                has_calc = any(
-                    isinstance(sub, ast.FunctionDef)
-                    and (sub.name.startswith("calc_") or any(kw in sub.name.lower() for kw in CALC_NAME_KEYWORDS))
-                    for sub in ast.iter_child_nodes(tree)
-                )
-                if has_calc and not suppressed(line, 45):
-                    violations.append((path, node.lineno, 45))
-
-        if isinstance(node, ast.Compare):
-            for op, comparator in zip(node.ops, node.comparators):
-                if isinstance(op, (ast.Eq, ast.NotEq)) and isinstance(comparator, ast.Constant) and comparator.value is None:
-                    if not suppressed(line, 15):
-                        violations.append((path, node.lineno, 15))
-
-        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
-            var_name = node.id
-            if not (var_name.startswith("__") and var_name.endswith("__")) and var_name not in ALLOWED_SHORT_VARS:
-                if len(var_name) == 1 or var_name.lower() in VAGUE_VAR_NAMES:
-                    if not suppressed(line, 38):
-                        violations.append((path, node.lineno, 38))
-
-        if isinstance(node, ast.Call):
-            if isinstance(node.func, ast.Attribute) and node.func.attr == "format":
-                if not suppressed(line, 16):
-                    violations.append((path, node.lineno, 16))
-            if isinstance(node.func, ast.Attribute) and node.func.attr == "setToolTip":
-                if node.args and _is_string_literal(node.args[0]) and not suppressed(line, 23):
-                    violations.append((path, node.lineno, 23))
-            if isinstance(node.func, ast.Name) and node.func.id == "print" and not suppressed(line, 25):
-                violations.append((path, node.lineno, 25))
-            if (isinstance(node.func, ast.Attribute) and node.func.attr == "setDecimals"
-                    and path.name not in SPINBOX_EXEMPT_FILES and not suppressed(line, 34)):
-                if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, int):
-                    if node.args[0].value < SPINBOX_MAX_DECIMALS:
-                        violations.append((path, node.lineno, 34))
-
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            if HARDCODED_PATH_RE.match(node.value) and not suppressed(line, 26):
-                violations.append((path, node.lineno, 26))
-            if HEX_COLOR_RE.match(node.value) and "theme" not in path.name.lower() and not suppressed(line, 28):
-                violations.append((path, node.lineno, 28))
-        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod) and isinstance(node.left, ast.Constant):
-            if isinstance(node.left.value, str) and not suppressed(line, 16):
-                violations.append((path, node.lineno, 16))
-
-        if isinstance(node, ast.Try):
-            for body_node in node.body:
-                if isinstance(body_node, (ast.Import, ast.ImportFrom)):
-                    subline = lines[body_node.lineno - 1] if body_node.lineno - 1 < len(lines) else ""
-                    if not suppressed(subline, 22):
-                        violations.append((path, body_node.lineno, 22))
-            for handler in node.handlers:
-                for body_node in handler.body:
-                    if isinstance(body_node, (ast.Import, ast.ImportFrom)):
-                        subline = lines[body_node.lineno - 1] if body_node.lineno - 1 < len(lines) else ""
-                        if not suppressed(subline, 22):
-                            violations.append((path, body_node.lineno, 22))
-
+        if isinstance(node, ast.ImportFrom):
+            _check_ast_import_from(node, path, line, lines, violations)
+        elif isinstance(node, ast.ExceptHandler):
+            _check_ast_except_handler(node, path, line, lines, violations)
+        elif isinstance(node, ast.FunctionDef):
+            _check_ast_function_def(node, path, line, lines, violations)
+        elif isinstance(node, ast.Return):
+            _check_ast_return(node, path, line, lines, violations)
+        elif isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+            _check_ast_comprehension(node, path, line, lines, violations)
+        elif isinstance(node, ast.Assign):
+            _check_ast_assign(node, path, line, lines, violations)
+        elif isinstance(node, ast.ClassDef):
+            _check_ast_class_def(node, path, line, tree, lines, violations)
+        elif isinstance(node, ast.Compare):
+            _check_ast_compare(node, path, line, lines, violations)
+        elif isinstance(node, ast.Name):
+            _check_ast_name(node, path, line, lines, violations)
+        elif isinstance(node, ast.Call):
+            _check_ast_call(node, path, line, lines, violations)
+        elif isinstance(node, ast.Constant):
+            _check_ast_constant(node, path, line, lines, violations)
+        elif isinstance(node, ast.BinOp):
+            _check_ast_binop(node, path, line, lines, violations)
+        elif isinstance(node, ast.Try):
+            _check_ast_try(node, path, line, lines, violations)
 
 def _base_name(node: ast.AST | None) -> str | None:
     if isinstance(node, ast.Name):

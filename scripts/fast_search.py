@@ -40,7 +40,15 @@ def search_in_file(
 ) -> list[tuple[int, list[str]]]:
     """Search for pattern in a file and return matches with context lines."""
     try:
-        content = path.read_text(encoding="utf-8", errors="replace")
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            try:
+                with open(path, "r", encoding="latin-1") as f:
+                    content = f.read()
+            except Exception:
+                return []
     except Exception:
         return []
 

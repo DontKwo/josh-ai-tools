@@ -15,6 +15,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from utils import IS_WINDOWS, get_user_home
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Add scripts directory to path to allow importing utils
+sys.path.insert(0, str(REPO_ROOT / "scripts"))
+from utils import format_command_path
 TEMPLATE_PATH = REPO_ROOT / "templates" / "INSTRUCTIONS_TEMPLATE.md"
 ENGINEERING_PATH = REPO_ROOT / "templates" / "ENGINEERING_RULES.md"
 PYTHON_RULES_PATH = REPO_ROOT / "templates" / "PYTHON_RULES.md"
@@ -89,13 +93,6 @@ def get_tool_definitions(workspace: Path | None = None) -> dict[str, dict]:
             "frontmatter": "",
         },
     }
-
-
-def format_command_path(path: Path) -> str:
-    path_str = str(path)
-    if " " in path_str:
-        return f'"{path_str}"'
-    return path_str
 
 
 def calc_linter_command() -> str:
