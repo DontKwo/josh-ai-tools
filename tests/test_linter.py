@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.claudemd_linter import scan_file, noqa_codes, suppressed, parse_cli_args, LEVEL_RULES
+from scripts.claudemd_linter import scan_file, suppressed, parse_cli_args, LEVEL_RULES
 from scripts.lint_fixer import fix_line, UNICODE_REPLACEMENTS, condense_docstrings
 from scripts.repo_map import generate_map
 from scripts.clean_encoding import clean_content
