@@ -11,7 +11,6 @@ Guarantees 100% safety:
 """
 import ast
 import argparse
-import importlib.metadata
 import json
 import re
 import sys

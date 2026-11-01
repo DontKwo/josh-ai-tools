@@ -2,11 +2,9 @@
 """Grill the user relentlessly about a plan, decision, or idea.
 Implements the 'Grilling' skill to stress-test their thinking.
 """
-from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
 def main() -> int:
     parser = argparse.ArgumentParser(
