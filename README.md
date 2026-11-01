@@ -80,6 +80,27 @@ aigrill           # Grill the user relentlessly about a plan or decision
 
 ---
 
+## Agent Skills (On-Demand Workflows)
+
+While terminal commands in `bin/` provide manual shortcuts for humans in a shell, AI coding agents interact through **Skills** (`skills/`). Each skill contains instructions and validation steps that load into prompt context only when triggered:
+
+| Skill | Included Tools | Activation Triggers |
+|:---|:---|:---|
+| **`lint-and-fix`** | `claudemd_linter.py`, `lint_fixer.py` | Code changes, style audits, rule verification |
+| **`grill-user`** | `grill_user.py` | Plan stress-testing, architectural reviews |
+| **`codebase-health`** | `prune_dead_code.py`, `boost_types.py`, `spell_checker.py`, `check_variable_names.py` | Import cleanups, type hints, identifier audits |
+| **`codebase-context`** | `repo_map.py`, `dir_overview.py`, `slice_file.py`, `pack_context.py`, `token_budget.py` | Repository surveys, prompt preparation |
+| **`dependency-guard`** | `check_dependencies.py` | Import verification, dependency checks |
+| **`workspace-checkpoint`** | `rollback.py` | Multi-step refactors, safe rollback points |
+| **`doc-to-markdown`** | `to_markdown.py` | Document ingestion (PDF, DOCX, XLSX, PPTX, HTML) |
+| **`clean-encoding`** | `clean_encoding.py` | Mojibake cleaning, corrupted placeholder repair |
+| **`smart-test`** | `smart_test_runner.py` | Targeted test runs for modified files |
+| **`secret-sanitizer`** | `secret_sanitizer.py` | Pre-commit credential and API token scans |
+
+Skills are automatically installed into `~/.gemini/antigravity/skills/` (global) or `.agent/skills/` (workspace) when running `configure.py` or `setup.bat` / `setup.sh`.
+
+---
+
 ## Repository Structure (Single Source of Truth)
 
 ```
@@ -88,6 +109,17 @@ josh-ai-tools/
 ├── setup.bat                      # Windows interactive setup script (auto-configures rules & MCP)
 ├── setup.sh                       # Linux & macOS interactive setup script (auto-configures rules & MCP)
 ├── .gitignore                     # Git ignores for Python, cache, and checkpoints
+├── skills/                        # 10 modular agent skills (progressive disclosure)
+│   ├── clean-encoding/            # Encoding corruption repair
+│   ├── codebase-context/          # Symbol maps, trees, and context packing
+│   ├── codebase-health/           # Zombie imports, types, spelling, and variable names
+│   ├── dependency-guard/          # Undeclared and hallucinated import scanner
+│   ├── doc-to-markdown/           # Universal document to Markdown converter
+│   ├── grill-user/                # Adversarial plan interrogator
+│   ├── lint-and-fix/              # 45-rule linter and safe auto-fixer
+│   ├── secret-sanitizer/          # Credential and token scanner
+│   ├── smart-test/                # Diff-aware test runner
+│   └── workspace-checkpoint/      # Snapshot checkpoints and one-key rollback
 ├── bin/                           # 21 global terminal shortcuts
 │   ├── aiboost / aiboost.cmd      # Type annotation booster
 │   ├── aicontext / aicontext.cmd  # Context packing utility

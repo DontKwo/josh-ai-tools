@@ -3,6 +3,8 @@
 with Josh's unified style rules and automated AST linter instructions.
 """
 
+from __future__ import annotations
+
 import argparse
 import json
 import platform
@@ -11,14 +13,9 @@ import shutil
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from utils import IS_WINDOWS, get_user_home
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
-
-# Add scripts directory to path to allow importing utils
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
-from utils import format_command_path
+from utils import IS_WINDOWS, format_command_path, get_user_home
 TEMPLATE_PATH = REPO_ROOT / "templates" / "INSTRUCTIONS_TEMPLATE.md"
 ENGINEERING_PATH = REPO_ROOT / "templates" / "ENGINEERING_RULES.md"
 PYTHON_RULES_PATH = REPO_ROOT / "templates" / "PYTHON_RULES.md"
@@ -420,6 +417,51 @@ def configure_mcp_servers(
         print(f"[+] Total MCP configs updated: {configured_count}")
 
 
+def configure_skills(
+    repo_root: Path,
+    scope: str = "global",
+    workspace: Path | None = None,
+    dry_run: bool = False,
+    remove: bool = False,
+) -> None:
+    source_skills = repo_root / "skills"
+    if not source_skills.is_dir():
+        return
+
+    home = get_user_home()
+    ws = workspace or Path.cwd()
+    destinations: list[Path] = []
+    if scope in ("global", "both"):
+        destinations.append(home / ".gemini" / "antigravity" / "skills")
+    if scope in ("workspace", "both"):
+        destinations.append(ws / ".agent" / "skills")
+
+    print("\n>>> Configuring Antigravity Skills...")
+    for dest_root in destinations:
+        for skill_dir in source_skills.iterdir():
+            if not skill_dir.is_dir():
+                continue
+            target_dir = dest_root / skill_dir.name
+            if remove:
+                if target_dir.exists():
+                    if dry_run:
+                        print(f"[DRY-RUN] Would remove skill: {target_dir}")
+                    else:
+                        shutil.rmtree(target_dir, ignore_errors=True)
+                        print(f"[OK] Removed skill: {target_dir}")
+                continue
+
+            if dry_run:
+                print(f"[DRY-RUN] Would install skill {skill_dir.name} -> {target_dir}")
+                continue
+
+            target_dir.mkdir(parents=True, exist_ok=True)
+            for file_path in skill_dir.glob("*"):
+                if file_path.is_file():
+                    shutil.copy2(file_path, target_dir / file_path.name)
+            print(f"[OK] Installed skill {skill_dir.name} -> {target_dir}")
+
+
 def interactive_menu() -> tuple[list[str], str, Path, bool]:
     print("Josh AI Tools Configurator")
     print(f"Repo directory: {REPO_ROOT}")
@@ -502,6 +544,11 @@ def main() -> None:
         help="Skip automatic configuration of Model Context Protocol (MCP) servers.",
     )
     parser.add_argument(
+        "--no-skills",
+        action="store_true",
+        help="Skip automatic installation of Antigravity skills.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Preview actions without modifying files.",
@@ -520,6 +567,8 @@ def main() -> None:
         configure_tools(selected, scope, workspace, args.action, dry_run=args.dry_run)
         if setup_mcp:
             configure_mcp_servers(REPO_ROOT, scope, workspace, selected, dry_run=args.dry_run)
+        if not args.no_skills and ("antigravity" in selected or not selected):
+            configure_skills(REPO_ROOT, scope, workspace, dry_run=args.dry_run)
     else:
         tools_arg = args.tools or "all"
         if tools_arg.strip().lower() == "all":
@@ -530,11 +579,15 @@ def main() -> None:
         if args.remove:
             remove_tool_targets(selected, args.scope, args.workspace, dry_run=args.dry_run)
             configure_mcp_servers(REPO_ROOT, args.scope, args.workspace, selected, dry_run=args.dry_run, remove=True)
+            if not args.no_skills and ("antigravity" in selected or not selected):
+                configure_skills(REPO_ROOT, args.scope, args.workspace, dry_run=args.dry_run, remove=True)
             return
 
         configure_tools(selected, args.scope, args.workspace, args.action, dry_run=args.dry_run)
         if not args.no_mcp:
             configure_mcp_servers(REPO_ROOT, args.scope, args.workspace, selected, dry_run=args.dry_run)
+        if not args.no_skills and ("antigravity" in selected or not selected):
+            configure_skills(REPO_ROOT, args.scope, args.workspace, dry_run=args.dry_run)
 
     print("Configuration finished! All AI tools reference:")
     print(f"  Linter: {LINTER_SCRIPT}")

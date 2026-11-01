@@ -123,6 +123,26 @@ class TestNewTools(unittest.TestCase):
         self.assertEqual(size_kb_err, 0.0)
 
 
+
+    def test_configure_skills(self) -> None:
+        from scripts.configure import configure_skills
+
+        dummy_repo = self.temp_dir / "repo"
+        skills_dir = dummy_repo / "skills" / "demo-skill"
+        skills_dir.mkdir(parents=True)
+        (skills_dir / "SKILL.md").write_text("# Demo Skill\n", encoding="utf-8")
+
+        dummy_ws = self.temp_dir / "workspace"
+        configure_skills(dummy_repo, scope="workspace", workspace=dummy_ws)
+        installed = dummy_ws / ".agent" / "skills" / "demo-skill" / "SKILL.md"
+        self.assertTrue(installed.is_file())
+        self.assertEqual(installed.read_text(encoding="utf-8"), "# Demo Skill\n")
+
+        # Verify removal
+        configure_skills(dummy_repo, scope="workspace", workspace=dummy_ws, remove=True)
+        self.assertFalse(installed.exists())
+
+
 if __name__ == "__main__":
     unittest.main()
 
