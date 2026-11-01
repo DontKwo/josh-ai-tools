@@ -53,3 +53,4 @@ uv run --no-project python scripts/spell_checker.py [target]
 After applying modifications:
 1. Run repository unit tests to confirm zero regressions.
 2. Run `uv run --no-project python scripts/claudemd_linter.py . --level strict` to confirm clean status.
+

@@ -34,3 +34,4 @@ Options:
 
 - Tables are converted into GitHub Flavored Markdown table format.
 - Formatting clutter, proprietary binary tags, and XML metadata are stripped.
+

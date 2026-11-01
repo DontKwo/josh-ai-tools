@@ -29,3 +29,4 @@ uv run --no-project python scripts/grill_user.py "<topic_or_plan>"
 2. Formulate 2 to 3 direct, challenging questions regarding unstated assumptions.
 3. Wait for the user response.
 4. Evaluate answers against reliability, performance, and simplicity before accepting the design.
+

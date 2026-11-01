@@ -60,3 +60,4 @@ uv run --no-project python scripts/token_budget.py [target]
 ## Best Practice
 
 Target file slices and symbol maps instead of reading entire files into prompt context.
+

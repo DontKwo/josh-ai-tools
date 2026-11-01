@@ -1,12 +1,13 @@
 # Setup Guide: AI Tools Development Environment
 
-This guide explains how to configure any Windows, Linux, or macOS machine with unified rules, developer tooling, and automated AST linting across AI assistants (Claude Code, Cursor, Cline, Antigravity, Codex, Windsurf, Copilot, Aider).
+This guide explains how to configure any Windows, Linux, or macOS machine with unified rules, developer tooling, automated AST linting, and agent skills across AI assistants (Claude Code, Cursor, Cline, Antigravity, Codex, Windsurf, Copilot, Aider).
 
 ---
 
 ## What Gets Configured
 
-When you run the setup script:
+The setup script configures four integration layers:
+
 1. **AI Assistant Instructions**
    - Directives enforcing terse replies, explicit types, git diff-scoped linting, and uv execution.
    - Dynamic path expansion pointing to this repository.
@@ -14,10 +15,13 @@ When you run the setup script:
 
 2. **Automated Linter and MCP Server**
    - `scripts/claudemd_linter.py`: 45-rule AST and prose validation script.
-   - `mcp/server.py`: Standard Model Context Protocol server exposing repository tools.
+   - `mcp/server.py`: Standard Model Context Protocol server exposing 23 native tools.
 
 3. **Global Terminal Shortcuts**
    - Command wrappers in `bin/` (`ailint`, `aifix`, `airepo`, `aimd`, `aitree`, `aisearch`, `airollback`, etc.) utilizing `uv` when available.
+
+4. **Agent Skills**
+   - 10 on-demand workflow runbooks in `skills/` installed to Google Antigravity (`~/.gemini/antigravity/skills/` globally or `.agent/skills/` in workspaces).
 
 ---
 
@@ -25,7 +29,7 @@ When you run the setup script:
 
 ### 1. Windows (Command Prompt or PowerShell)
 
-1. Clone or copy this repository to your target machine:
+1. Clone this repository to your machine:
    ```cmd
    git clone <repo-url> josh-ai-tools
    cd josh-ai-tools
@@ -40,7 +44,7 @@ When you run the setup script:
 
 ### 2. Linux and macOS (Bash / Terminal)
 
-1. Clone or copy this repository:
+1. Clone this repository:
    ```bash
    git clone <repo-url> josh-ai-tools
    cd josh-ai-tools
@@ -75,6 +79,9 @@ uv run --no-project python scripts/claudemd_linter.py . --level strict
 # Run the automated doctor health check
 uv run --no-project python scripts/doctor.py
 
-# Verify global shortcut
+# Run the test suite
+uv run --no-project python -m unittest discover tests
+
+# Verify global terminal shortcuts
 ailint --help
 ```

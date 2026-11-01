@@ -27,3 +27,4 @@ uv run --no-project python scripts/check_dependencies.py [target]
 
 1. If an import is valid but missing from configuration, add it to `pyproject.toml` or `requirements.txt`.
 2. If an import is hallucinated by an AI, replace it with standard library or actual project dependencies.
+

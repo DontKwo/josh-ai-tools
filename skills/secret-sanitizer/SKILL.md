@@ -26,3 +26,4 @@ Options:
 - API tokens (OpenAI, Anthropic, GitHub, AWS, Google, Stripe)
 - Database connection URIs containing embedded passwords
 - JWT tokens and high-entropy secret assignments
+

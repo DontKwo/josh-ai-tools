@@ -47,3 +47,4 @@ uv run --no-project python scripts/rollback.py restore [label]
 1. Always save a checkpoint before running broad automated refactors or complex AST rewrites.
 2. Run test suites.
 3. If tests fail or code breaks unexpectedly, restore the checkpoint immediately.
+
