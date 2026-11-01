@@ -100,7 +100,7 @@ josh-ai-tools/
 ├── scripts/      # Core Python linters, analyzers, and utilities
 ├── skills/       # 10 modular agent skills with SKILL.md runbooks
 ├── templates/    # Instruction rules, engineering standards, and MCP templates
-└── tests/        # 185 unit tests covering rules and tools
+└── tests/        # 258 unit tests covering rules and tools
 ```
 
 ---
