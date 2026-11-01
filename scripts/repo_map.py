@@ -4,6 +4,7 @@ Builds a compressed AST-level structural map of codebases for LLM context.
 """
 import argparse
 import ast
+import re
 from pathlib import Path
 
 DEFAULT_SKIP_DIRS = {
@@ -46,6 +47,60 @@ def extract_python_symbols(path: Path) -> dict:
                     m_sig = _format_func_sig(item)
                     methods.append(m_sig)
             symbols["classes"][f"{node.name}{base_str}"] = (summary, methods)
+
+    return symbols
+
+
+def extract_regex_symbols(path: Path) -> dict[str, list[str]]:
+    try:
+        source_code = path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return {}
+
+    symbols: dict[str, list[str]] = {"classes": [], "functions": [], "exports": []}
+    suffix = path.suffix.lower()
+
+    if suffix in {".js", ".jsx", ".ts", ".tsx"}:
+        class_pattern = re.compile(r"^\s*(?:export\s+)?class\s+([A-Za-z0-9_$]+)", re.MULTILINE)
+        func_pattern = re.compile(
+            r"^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z0-9_$]+)\s*\(|"
+            r"^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z0-9_$]+)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z0-9_$]+)\s*=>",
+            re.MULTILINE,
+        )
+        export_pattern = re.compile(r"^\s*export\s+(?:default\s+)?(?:const|let|var|function|class)?\s*([A-Za-z0-9_$]+)?", re.MULTILINE)
+
+        for match in class_pattern.finditer(source_code):
+            symbols["classes"].append(match.group(1))
+
+        for match in func_pattern.finditer(source_code):
+            func_name = match.group(1) or match.group(2)
+            if func_name:
+                symbols["functions"].append(func_name)
+
+        for match in export_pattern.finditer(source_code):
+            export_name = match.group(1)
+            if export_name:
+                symbols["exports"].append(export_name)
+
+    elif suffix == ".rs":
+        type_pattern = re.compile(r"^\s*(?:pub\s+)?(?:struct|enum|trait|impl)\s+([A-Za-z0-9_]+)", re.MULTILINE)
+        fn_pattern = re.compile(r"^\s*(?:pub\s+)?(?:async\s+)?fn\s+([A-Za-z0-9_]+)\s*\(", re.MULTILINE)
+
+        for match in type_pattern.finditer(source_code):
+            symbols["classes"].append(match.group(1))
+
+        for match in fn_pattern.finditer(source_code):
+            symbols["functions"].append(match.group(1))
+
+    elif suffix == ".go":
+        type_pattern = re.compile(r"^\s*type\s+([A-Za-z0-9_]+)\s+(?:struct|interface)", re.MULTILINE)
+        func_pattern = re.compile(r"^\s*func\s+(?:\([^)]+\)\s+)?([A-Za-z0-9_]+)\s*\(", re.MULTILINE)
+
+        for match in type_pattern.finditer(source_code):
+            symbols["classes"].append(match.group(1))
+
+        for match in func_pattern.finditer(source_code):
+            symbols["functions"].append(match.group(1))
 
     return symbols
 
@@ -98,10 +153,23 @@ def generate_map(root: Path, max_lines: int = 300) -> str:
                 lines.append(f"  {sig}{doc_part}")
             lines.append("")
         else:
-            # Simple line-count preview for non-Python supported files
-            lines.append(f"{rel_path}")
+            regex_syms = extract_regex_symbols(f)
+            has_regex_syms = any(regex_syms.values())
+            lines.append(f"{rel_path}:")
+            if has_regex_syms:
+                if regex_syms.get("exports"):
+                    lines.append(f"  exports: {', '.join(regex_syms['exports'][:5])}")
+                for cls_name in regex_syms.get("classes", [])[:8]:
+                    lines.append(f"  class/type {cls_name}")
+                for func_name in regex_syms.get("functions", [])[:10]:
+                    lines.append(f"  fn {func_name}")
+            lines.append("")
 
     return "\n".join(lines)
+
+
+def render_repo_map(root: Path, max_lines: int = 300) -> str:
+    return generate_map(root, max_lines=max_lines)
 
 
 def main() -> None:
