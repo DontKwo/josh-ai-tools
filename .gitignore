@@ -36,6 +36,7 @@ env/
 .credentials.json
 history.jsonl
 *.backup.*
+*.orig
 lint_report.txt
 .lint_cache.json
 *.log
