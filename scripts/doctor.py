@@ -14,11 +14,66 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from utils import IS_WINDOWS, get_user_home
+from configure import configure_skills
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LINTER_SCRIPT = REPO_ROOT / "scripts" / "claudemd_linter.py"
 ENGINEERING_PATH = REPO_ROOT / "templates" / "ENGINEERING_RULES.md"
 PYTHON_RULES_PATH = REPO_ROOT / "templates" / "PYTHON_RULES.md"
+
+
+def inspect_mcp_config(mcp_path: Path) -> dict:
+    info = {
+        "exists": mcp_path.is_file(),
+        "is_registered": False,
+        "corrupted": False,
+        "command_valid": False,
+        "script_valid": False,
+    }
+    if not info["exists"]:
+        return info
+
+    try:
+        mcp_data = json.loads(mcp_path.read_text(encoding="utf-8"))
+        josh_tools = mcp_data.get("mcpServers", {}).get("josh-ai-tools")
+        if josh_tools:
+            info["is_registered"] = True
+
+            cmd = josh_tools.get("command")
+            if cmd and Path(cmd).is_file():
+                info["command_valid"] = True
+
+            args = josh_tools.get("args", [])
+            for arg in args:
+                if arg.endswith("server.py"):
+                    if Path(arg).is_file():
+                        info["script_valid"] = True
+                    break
+    except Exception:
+        info["corrupted"] = True
+
+    return info
+
+
+def check_installed_skills(repo_root: Path, home: Path) -> dict[str, bool]:
+    installed_status: dict[str, bool] = {}
+    source_skills = repo_root / "skills"
+    dest_dir = home / ".gemini" / "antigravity" / "skills"
+
+    if not source_skills.is_dir():
+        return installed_status
+
+    for skill_dir in source_skills.iterdir():
+        if not skill_dir.is_dir():
+            continue
+
+        skill_name = skill_dir.name
+        dest_skill_dir = dest_dir / skill_name
+        dest_skill_md = dest_skill_dir / "SKILL.md"
+
+        installed_status[skill_name] = dest_skill_dir.is_dir() and dest_skill_md.is_file()
+
+    return installed_status
 
 
 def get_all_config_paths() -> list[tuple[str, Path]]:
@@ -142,7 +197,7 @@ def clean_stale_reports_and_cache(dry_run: bool = False) -> int:
     return removed_count
 
 
-def run_diagnostics(auto_heal: bool = False, clean_cache: bool = False) -> None:
+def run_diagnostics(auto_heal: bool = False, clean_cache: bool = False, repair: bool = False) -> None:
     print("Josh AI Tools Health & Diagnostic Doctor")
     print(f"Current Repo Root:  {REPO_ROOT}")
     print(f"Current Linter:     {LINTER_SCRIPT}")
@@ -204,11 +259,32 @@ def run_diagnostics(auto_heal: bool = False, clean_cache: bool = False) -> None:
             else:
                 reason = f"Points to missing path: {info['extracted_path']}"
             print(f"  [BROKEN] {name:16}: {reason}")
+            info["type"] = "config"
             needs_heal.append(info)
 
-    # 6. Check Configured MCP Servers
-    print("\n[6] Configured Model Context Protocol (MCP) Servers:")
+    # 6. Check Antigravity Skills
+    print("\n[6] Antigravity Skills Status:")
     home = get_user_home()
+    skills_status = check_installed_skills(REPO_ROOT, home)
+    missing_skills = False
+
+    if not skills_status:
+        print("  [-] No skills found in repository.")
+    else:
+        for skill_name, is_installed in sorted(skills_status.items()):
+            if is_installed:
+                print(f"  [OK] {skill_name:20}: Installed")
+            else:
+                print(f"  [-] {skill_name:20}: Missing")
+                missing_skills = True
+
+    if missing_skills and repair:
+        print("\nRepairing missing Antigravity Skills...")
+        configure_skills(REPO_ROOT, scope="global")
+        print("  [+] Repair complete.")
+
+    # 7. Check Configured MCP Servers
+    print("\n[7] Configured Model Context Protocol (MCP) Servers:")
     mcp_configs = [
         ("Claude Desktop", home / "AppData" / "Roaming" / "Claude" / "claude_desktop_config.json" if IS_WINDOWS else home / ".config" / "Claude" / "claude_desktop_config.json"),
         ("Claude Code CLI", home / ".claude.json"),
@@ -225,19 +301,20 @@ def run_diagnostics(auto_heal: bool = False, clean_cache: bool = False) -> None:
     ]
 
     for mcp_name, mcp_path in mcp_configs:
-        if mcp_path.is_file():
-            try:
-                mcp_data = json.loads(mcp_path.read_text(encoding="utf-8"))
-                if "josh-ai-tools" in mcp_data.get("mcpServers", {}):
-                    print(f"  [OK] {mcp_name:20}: Active (josh-ai-tools registered)")
-                else:
-                    print(f"  [-] {mcp_name:20}: Present, but josh-ai-tools not registered")
-            except Exception:
-                print(f"  [WARN] {mcp_name:18}: Corrupted JSON file")
-        else:
+        mcp_info = inspect_mcp_config(mcp_path)
+        if not mcp_info["exists"]:
             print(f"  [-] {mcp_name:20}: Not installed ({mcp_path.name} not found)")
+        elif mcp_info["corrupted"]:
+            print(f"  [WARN] {mcp_name:18}: Corrupted JSON file")
+        elif not mcp_info["is_registered"]:
+            print(f"  [-] {mcp_name:20}: Present, but josh-ai-tools not registered")
+        elif not mcp_info["command_valid"] or not mcp_info["script_valid"]:
+            print(f"  [BROKEN] {mcp_name:16}: Registered, but points to missing paths")
+            needs_heal.append({"name": mcp_name, "path": mcp_path, "type": "mcp"})
+        else:
+            print(f"  [OK] {mcp_name:20}: Active (josh-ai-tools registered and valid)")
 
-    # 7. Healing action
+    # 8. Healing action
     if needs_heal:
         print(f"\n[!] Found {len(needs_heal)} configuration(s) pointing to stale or missing linter paths.")
         if auto_heal:
@@ -249,8 +326,10 @@ def run_diagnostics(auto_heal: bool = False, clean_cache: bool = False) -> None:
         if do_heal:
             print("\nHealing configurations...")
             for info in needs_heal:
-                if heal_config_file(info):
+                if info.get("type") == "config" and heal_config_file(info):
                     print(f"  [+] Repaired: {info['name']} -> {LINTER_SCRIPT}")
+                elif info.get("type") == "mcp":
+                    print(f"  [!] MCP Repair not yet implemented for {info['name']}")
             print("\n[OK] All broken configurations successfully healed!")
     else:
         print("\n[OK] All installed AI tool configurations are healthy and synchronized.")
@@ -265,9 +344,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run diagnostics and heal stale AI tool paths.")
     parser.add_argument("--heal", action="store_true", help="Automatically heal stale paths without asking")
     parser.add_argument("--clean", action="store_true", help="Remove stale lint reports and .lint_cache.json")
+    parser.add_argument("--repair", action="store_true", help="Automated repair to reinstall missing skills")
     args = parser.parse_args()
 
-    run_diagnostics(auto_heal=args.heal, clean_cache=args.clean)
+    run_diagnostics(auto_heal=args.heal, clean_cache=args.clean, repair=args.repair)
 
 
 if __name__ == "__main__":
