@@ -13,20 +13,15 @@ if hasattr(sys.stdout, "reconfigure"):
         sys.stdout = sys.stdout
 
 
-def slice_lines(
+def get_file_slice(
     file_path: Path,
     start: int = 1,
     end: int | None = None,
     head: int | None = None,
     tail: int | None = None,
     numbered: bool = True,
-) -> None:
-    try:
-        content = file_path.read_text(encoding="utf-8", errors="replace")
-    except Exception as e:
-        print(f"Error reading file {file_path}: {e}", file=sys.stderr)
-        return
-
+) -> tuple[str, int, int, int]:
+    content = file_path.read_text(encoding="utf-8", errors="replace")
     lines = content.splitlines()
     total_lines = len(lines)
 
@@ -40,12 +35,34 @@ def slice_lines(
         start = max(1, start)
         end = min(total_lines, end if end is not None else total_lines)
 
-    print(f"--- File: {file_path.name} (Lines {start}-{end} of {total_lines}) ---")
+    out_lines = []
     for i in range(start - 1, end):
         if numbered:
-            print(f"{i + 1:5d} | {lines[i]}")
+            out_lines.append(f"{i + 1:5d} | {lines[i]}")
         else:
-            print(lines[i])
+            out_lines.append(lines[i])
+    return "\n".join(out_lines), start, end, total_lines
+
+
+def slice_lines(
+    file_path: Path,
+    start: int = 1,
+    end: int | None = None,
+    head: int | None = None,
+    tail: int | None = None,
+    numbered: bool = True,
+) -> None:
+    try:
+        text, s_line, e_line, total = get_file_slice(
+            file_path, start, end, head, tail, numbered
+        )
+    except Exception as e:
+        print(f"Error reading file {file_path}: {e}", file=sys.stderr)
+        return
+
+    print(f"--- File: {file_path.name} (Lines {s_line}-{e_line} of {total}) ---")
+    if text:
+        print(text)
 
 
 def parse_range(range_str: str) -> tuple[int, int | None]:
