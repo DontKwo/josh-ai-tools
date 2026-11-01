@@ -17,7 +17,7 @@ class TestLinterCache(unittest.TestCase):
     def setUp(self) -> None:
         """Set up isolated temporary directory and dummy file for caching tests."""
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.temp_path = Path(self.temp_dir.name)
+        self.temp_path = Path(self.temp_dir.name).resolve()
         self.dummy_file = self.temp_path / "dummy.py"
         self.dummy_file.write_text("def foo() -> None:\n    pass  # noqa: 10\n", encoding="utf-8")
 

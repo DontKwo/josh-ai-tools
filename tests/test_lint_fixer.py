@@ -138,7 +138,7 @@ class TestLintFixerFileProcessing(unittest.TestCase):
     """Test file processing with temporary files (dry-run vs. in-place)."""
 
     def setUp(self) -> None:
-        self.temp_dir = Path(tempfile.mkdtemp())
+        self.temp_dir = Path(tempfile.mkdtemp()).resolve()
 
     def tearDown(self) -> None:
         shutil.rmtree(self.temp_dir, ignore_errors=True)
