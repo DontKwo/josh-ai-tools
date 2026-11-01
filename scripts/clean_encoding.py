@@ -76,7 +76,7 @@ def clean_content(content: str, degrees_to_word: bool = False) -> tuple[str, lis
     return new_content, changes
 
 
-def process_file(path: Path, dry_run: bool, degrees_to_word: bool) -> int:
+def process_file(path: Path, dry_run: bool = False, degrees_to_word: bool = False) -> int:
     try:
         raw_bytes = path.read_bytes()
     except OSError:
@@ -109,6 +109,24 @@ def process_file(path: Path, dry_run: bool, degrees_to_word: bool) -> int:
     return 0
 
 
+clean_file = process_file
+
+
+def scan_directory(target: Path) -> list[Path]:
+    target_path = target.resolve()
+    if target_path.is_file():
+        return [target_path]
+
+    matched_files: list[Path] = []
+    valid_exts = (".py", ".txt", ".md", ".json", ".csv", ".html", ".js", ".ts")
+    for root, dirs, filenames in os.walk(target_path):
+        dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+        for filename in filenames:
+            if Path(filename).suffix in valid_exts:
+                matched_files.append(Path(root) / filename)
+    return matched_files
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Scan and clean character encoding corruption (mojibake).")
     parser.add_argument("target", nargs="?", default=".", help="File or directory to scan (default: current directory)")
@@ -121,16 +139,7 @@ def main() -> None:
         print(f"Error: Target path not found: {target}")
         sys.exit(1)
 
-    if target.is_file():
-        files = [target]
-    else:
-        files = []
-        valid_exts = (".py", ".txt", ".md", ".json", ".csv", ".html", ".js", ".ts")
-        for root, dirs, filenames in os.walk(target):
-            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-            for filename in filenames:
-                if Path(filename).suffix in valid_exts:
-                    files.append(Path(root) / filename)
+    files = scan_directory(target)
 
     print("=" * 60)
     print("      Josh's AI Tools Mojibake & Encoding Cleaner")
@@ -139,8 +148,8 @@ def main() -> None:
         print("MODE: DRY RUN (preview only)\n")
 
     total_fixed_files = 0
-    for f in files:
-        fixes = process_file(f, args.dry_run, args.degrees_to_word)
+    for target_file in files:
+        fixes = clean_file(target_file, args.dry_run, args.degrees_to_word)
         if fixes > 0:
             total_fixed_files += 1
 
