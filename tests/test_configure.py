@@ -88,7 +88,15 @@ class TestConfigure(unittest.TestCase):
         anti_mcp_path.parent.mkdir(parents=True)
         anti_mcp_path.write_text(json.dumps({"mcpServers": {"other-gemini": {"command": "dummy"}}}), encoding="utf-8")
 
-        claude_mcp_path_desktop = self.mock_home / ".config" / "Claude" / "claude_desktop_config.json"
+        import platform
+        from scripts.utils import IS_WINDOWS
+        if IS_WINDOWS:
+            claude_mcp_path_desktop = self.mock_home / "AppData" / "Roaming" / "Claude" / "claude_desktop_config.json"
+        elif platform.system() == "Darwin":
+            claude_mcp_path_desktop = self.mock_home / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
+        else:
+            claude_mcp_path_desktop = self.mock_home / ".config" / "Claude" / "claude_desktop_config.json"
+
         claude_mcp_path_desktop.parent.mkdir(parents=True)
         claude_mcp_path_desktop.write_text(json.dumps({"mcpServers": {"other-claude": {"command": "dummy"}}}), encoding="utf-8")
 
