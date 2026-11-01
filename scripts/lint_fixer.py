@@ -45,7 +45,7 @@ NE_NONE_RE = re.compile(r"!=\s*None\b")
 
 
 # Rule 41 pattern
-AI_BANNER_RE = re.compile(r"^(?:#|//|\*)\s*([#=]{5,})\s*$|^([#=]{5,})\s*$")
+AI_BANNER_RE = re.compile(r"^(?:#+|//|\*+)\s*([#=]{5,})\s*(?:#+|\*+)?$|^([#=]{5,})\s*$")
 
 
 def fix_line(
@@ -61,6 +61,7 @@ def fix_line(
     # Check for em dash (Rule 1) - explicitly refuse automated fix
     if "\u2014" in line:
         print(f"  [!] Skipped Rule 1 (em dash) at {path.name}:{lineno} - Manual sentence rewrite required by linter rules.")  # noqa: 25
+        return line, changes
 
     # 1. Rule 2: Safe Unicode normalization
     for bad_char, good_char in UNICODE_REPLACEMENTS.items():
@@ -152,6 +153,9 @@ def fix_file(
         print(f"[DRY-RUN] Would apply {total_fixes} safe fixes to {path}")  # noqa: 25
 
     return total_fixes
+
+
+process_file = fix_file
 
 
 def main() -> None:
