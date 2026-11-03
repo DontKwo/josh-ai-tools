@@ -35,21 +35,44 @@ def get_symbol_map(ws: Path) -> str:
         return ""
 
 
-def pack_files(files: list[Path], root: Path) -> list[str]:
+def pack_files(files: list[Path], root: Path, max_kb: float) -> tuple[list[str], list[tuple[str, int]]]:
     blocks: list[str] = []
+    stats: list[tuple[str, int]] = []
     for f in files:
         if not f.is_file():
             continue
+        if f.stat().st_size > max_kb * 1024:
+            continue
         try:
-            rel = f.relative_to(root)
+            rel = str(f.relative_to(root))
         except ValueError:
-            rel = f
+            rel = str(f)
         try:
             content = f.read_text(encoding="utf-8", errors="replace")
+            c_bytes = len(content.encode("utf-8"))
             blocks.append(f"### File: {rel}\n```\n{content}\n```\n")
+            stats.append((rel, c_bytes))
         except Exception:
             continue
-    return blocks
+    return blocks, stats
+
+
+def generate_summary(file_stats: list[tuple[str, int]]) -> str:
+    total_files = len(file_stats)
+    total_bytes = sum(s[1] for s in file_stats)
+    total_tokens = total_bytes // 4
+    lines = [
+        "## Executive Summary",
+        f"- Total files: {total_files}",
+        f"- Total bytes: {total_bytes}",
+        f"- Estimated tokens: {total_tokens}",
+        "",
+        "| File | Bytes | Tokens |",
+        "|---|---|---|"
+    ]
+    for rel, c_bytes in file_stats:
+        lines.append(f"| {rel} | {c_bytes} | {c_bytes // 4} |")
+    return "\n".join(lines) + "\n"
 
 
 def main() -> None:
@@ -59,10 +82,18 @@ def main() -> None:
     parser.add_argument("--staged", action="store_true", help="Include staged git diff")
     parser.add_argument("--symbols", action="store_true", help="Include AST symbol tree")
     parser.add_argument("--output", type=Path, default=None, help="Output file path (default: stdout)")
+    parser.add_argument("--max-file-kb", type=float, default=500.0, help="Skip files larger than max KB")
     args = parser.parse_args()
 
     ws = Path.cwd()
     output_parts: list[str] = ["# Context Bundle\n"]
+
+    if args.files:
+        file_blocks, stats = pack_files(args.files, ws, args.max_file_kb)
+        if stats:
+            output_parts.append(generate_summary(stats))
+    else:
+        file_blocks = []
 
     if args.symbols:
         sym_output = get_symbol_map(ws)
@@ -74,10 +105,8 @@ def main() -> None:
         if diff_text:
             output_parts.append(f"## Git Changes\n```diff\n{diff_text}\n```\n")
 
-    if args.files:
-        file_blocks = pack_files(args.files, ws)
-        if file_blocks:
-            output_parts.append("## Source Files\n" + "\n".join(file_blocks))
+    if file_blocks:
+        output_parts.append("## Source Files\n" + "\n".join(file_blocks))
 
     full_payload = "\n".join(output_parts)
     if args.output:

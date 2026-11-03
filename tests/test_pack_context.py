@@ -70,11 +70,16 @@ class TestPackContext(unittest.TestCase):
         file2 = self.temp_dir / "f2.txt"
         file2.write_text("content 2", encoding="utf-8")
 
+        # Test large file
+        large_file = self.temp_dir / "f_large.txt"
+        large_file.write_text("A" * 2048, encoding="utf-8")
+
         # test with non-existent file too
         non_existent = self.temp_dir / "f3.txt"
 
-        blocks = pack_files([file1, file2, non_existent], self.temp_dir)
+        blocks, stats = pack_files([file1, file2, large_file, non_existent], self.temp_dir, max_kb=1.0)
         self.assertEqual(len(blocks), 2)
+        self.assertEqual(len(stats), 2)
         self.assertIn("### File: f1.txt", blocks[0])
         self.assertIn("content 1", blocks[0])
         self.assertIn("### File: f2.txt", blocks[1])
@@ -85,12 +90,16 @@ class TestPackContext(unittest.TestCase):
     @patch("scripts.pack_context.get_symbol_map")
     @patch("argparse.ArgumentParser.parse_args")
     def test_main_stdout(self, mock_parse_args: MagicMock, mock_get_symbol_map: MagicMock, mock_get_git_diff: MagicMock, mock_stdout: io.StringIO) -> None:
+        file1 = self.temp_dir / "f1.txt"
+        file1.write_text("hello", encoding="utf-8")
+
         args = MagicMock()
-        args.files = []
+        args.files = [file1]
         args.diff = True
         args.staged = False
         args.symbols = True
         args.output = None
+        args.max_file_kb = 500.0
         mock_parse_args.return_value = args
 
         mock_get_git_diff.return_value = "fake diff"
@@ -100,6 +109,7 @@ class TestPackContext(unittest.TestCase):
 
         output = mock_stdout.getvalue()
         self.assertIn("# Context Bundle", output)
+        self.assertIn("## Executive Summary", output)
         self.assertIn("## Codebase Symbol Map", output)
         self.assertIn("fake map", output)
         self.assertIn("## Git Changes", output)
@@ -109,12 +119,16 @@ class TestPackContext(unittest.TestCase):
     @patch("argparse.ArgumentParser.parse_args")
     def test_main_file_output(self, mock_parse_args: MagicMock, mock_stdout: io.StringIO) -> None:
         out_file = self.temp_dir / "out.md"
+        file1 = self.temp_dir / "f1.txt"
+        file1.write_text("test", encoding="utf-8")
+
         args = MagicMock()
-        args.files = []
+        args.files = [file1]
         args.diff = False
         args.staged = False
         args.symbols = False
         args.output = out_file
+        args.max_file_kb = 500.0
         mock_parse_args.return_value = args
 
         main()
@@ -122,6 +136,7 @@ class TestPackContext(unittest.TestCase):
         self.assertTrue(out_file.is_file())
         content = out_file.read_text(encoding="utf-8")
         self.assertIn("# Context Bundle", content)
+        self.assertIn("## Executive Summary", content)
 
         stdout_val = mock_stdout.getvalue()
         self.assertIn("[OK] Context bundle written", stdout_val)
