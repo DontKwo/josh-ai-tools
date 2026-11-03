@@ -168,6 +168,8 @@ class TestRepoMapRegexSymbols(unittest.TestCase):
             "}\n"
             "impl Streamable for ConfigParser {\n"
             "}\n"
+            "impl ExecutionStatus {\n"
+            "}\n"
             "pub async fn start_service() -> bool {\n"
             "    true\n"
             "}\n"
@@ -186,9 +188,54 @@ class TestRepoMapRegexSymbols(unittest.TestCase):
             self.assertIn("Streamable", symbols["classes"])
             self.assertIn("start_service", symbols["functions"])
             self.assertIn("compute_hash", symbols["functions"])
+            # Validate impl block duplication isn't an issue but it's captured
+            self.assertEqual(symbols["classes"].count("ConfigParser"), 2)
+            self.assertEqual(symbols["classes"].count("ExecutionStatus"), 2)
         finally:
             if temp_path.exists():
                 temp_path.unlink()
+
+    def test_cpp_symbols(self) -> None:
+        source_code = (
+            "namespace MyNamespace {\n"
+            "    class MyClass {\n"
+            "        void my_method();\n"
+            "        MyClass();\n"
+            "        ~MyClass();\n"
+            "    };\n"
+            "}\n"
+            "struct MyStruct {};\n"
+            "void global_function() {}\n"
+            "int* get_pointer() {}\n"
+            "const std::string& get_string() {}\n"
+            "static inline void inline_func() {}\n"
+            "MyClass::MyClass() {}\n"
+            "MyClass::~MyClass() {}\n"
+            "void MyNamespace::MyClass::my_method() {}\n"
+        )
+        for ext in [".cpp", ".hpp", ".h"]:
+            with tempfile.NamedTemporaryFile("w", suffix=ext, delete=False, encoding="utf-8") as temp_file:
+                temp_file.write(source_code)
+                temp_path = Path(temp_file.name).resolve()
+
+            try:
+                symbols = extract_regex_symbols(temp_path)
+                self.assertIn("MyNamespace", symbols["classes"])
+                self.assertIn("MyClass", symbols["classes"])
+                self.assertIn("MyStruct", symbols["classes"])
+                self.assertIn("my_method", symbols["functions"])
+                self.assertIn("MyClass", symbols["functions"])
+                self.assertIn("~MyClass", symbols["functions"])
+                self.assertIn("global_function", symbols["functions"])
+                self.assertIn("get_pointer", symbols["functions"])
+                self.assertIn("get_string", symbols["functions"])
+                self.assertIn("inline_func", symbols["functions"])
+                self.assertIn("MyClass::MyClass", symbols["functions"])
+                self.assertIn("MyClass::~MyClass", symbols["functions"])
+                self.assertIn("MyNamespace::MyClass::my_method", symbols["functions"])
+            finally:
+                if temp_path.exists():
+                    temp_path.unlink()
 
     def test_go_symbols(self) -> None:
         source_code = (
