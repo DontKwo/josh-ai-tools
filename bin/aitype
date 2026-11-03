@@ -1,0 +1,2 @@
+#!/bin/bash
+uv run --no-project python "${BASH_SOURCE[0]%/*}/../scripts/type_coverage.py" "$@"
