@@ -12,6 +12,7 @@ from scripts.smart_test_runner import (
     extract_symbols_from_file,
     find_matching_tests,
     find_venv_python,
+    find_impacted_tests,
 )
 
 
@@ -104,6 +105,25 @@ class TestSmartTestRunner(unittest.TestCase):
         with patch("platform.system", return_value="Windows"), patch.dict(os.environ, {}, clear=True):
             resolved_interpreter = find_venv_python(self.workspace_dir)
             self.assertEqual(resolved_interpreter, python_executable)
+
+
+
+    @patch("scripts.smart_test_runner.Path.cwd")
+    def test_find_impacted_tests(self, mock_cwd: unittest.mock.MagicMock) -> None:
+        mock_cwd.return_value = self.workspace_dir
+        tests_dir = self.workspace_dir / "tests"
+        tests_dir.mkdir(parents=True)
+        feature_test = tests_dir / "test_doctor.py"
+        feature_test.write_text("def test_doc() -> None:\n    pass\n", encoding="utf-8")
+        source_file = self.workspace_dir / "scripts" / "doctor.py"
+        source_file.parent.mkdir(parents=True, exist_ok=True)
+        source_file.write_text("def doc_func() -> None:\n    pass\n", encoding="utf-8")
+
+        # Test finding impacted test using relative path
+        impacted = find_impacted_tests(["scripts/doctor.py"])
+        self.assertEqual(len(impacted), 1)
+        self.assertTrue(impacted[0].endswith("test_doctor.py"))
+
 
 
 if __name__ == "__main__":
