@@ -10,6 +10,7 @@ from scripts.token_budget import (
     CHARS_PER_TOKEN,
     analyze_file,
     estimate_tokens,
+    format_token_distribution,
     scan_directory,
 )
 
@@ -154,6 +155,22 @@ class TestTokenBudget(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0][0].resolve(), single_target.resolve())
         self.assertEqual(results[0][1]["lines"], 1)
+
+    def test_format_token_distribution(self) -> None:
+        counts = {"file1.py": 100, "file2.py": 200, "file3.py": 700}
+        total_budget = 1000
+        output = format_token_distribution(counts, total_budget)
+        self.assertIn("Token Distribution (Top 10 Files):", output)
+        self.assertIn("file3.py", output)
+        self.assertIn("( 70.0%)", output)
+        self.assertIn("file1.py", output)
+        self.assertIn("( 10.0%)", output)
+
+    def test_format_token_distribution_no_tokens(self) -> None:
+        counts = {}
+        output = format_token_distribution(counts, 0)
+        self.assertEqual(output, "No tokens to distribute.")
+
 
 
 if __name__ == "__main__":

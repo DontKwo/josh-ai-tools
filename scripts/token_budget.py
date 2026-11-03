@@ -60,6 +60,20 @@ def scan_directory(target: Path, max_depth: int = 5) -> list[tuple[Path, dict[st
     return results
 
 
+def format_token_distribution(file_token_counts: dict[str, int], total_budget: int) -> str:
+    if total_budget <= 0:
+        return "No tokens to distribute."
+    sorted_files = sorted(file_token_counts.items(), key=lambda item: item[1], reverse=True)[:10]
+    lines = ["", "Token Distribution (Top 10 Files):", "-" * 72]
+    for file_path, tokens in sorted_files:
+        pct = (tokens / total_budget) * 100
+        chart_bar = "█" * int(pct / 2)
+        display_path = "..." + file_path[-43:] if len(file_path) > 46 else file_path
+        lines.append(f"{display_path:<46} {tokens:>8} ({pct:>5.1f}%) | {chart_bar}")
+    lines.append("-" * 72)
+    return "\n".join(lines)
+
+
 def print_budget_report(results: list[tuple[Path, dict[str, int]]], root: Path, threshold: int) -> None:
     results.sort(key=lambda item: item[1]["tokens"], reverse=True)
 
@@ -103,6 +117,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Estimate token usage across files and directories.")
     parser.add_argument("target", nargs="?", default=".", help="Target file or directory path")
     parser.add_argument("--threshold", type=int, default=5000, help="Token threshold to flag large files")
+    parser.add_argument("--chart", action="store_true", help="Display token distribution breakdown chart")
     args = parser.parse_args()
 
     root = Path(args.target).resolve()
@@ -112,6 +127,17 @@ def main() -> None:
 
     results = scan_directory(root)
     print_budget_report(results, root, args.threshold)
+
+    if args.chart:
+        file_counts = {}
+        for path, info in results:
+            try:
+                rel = str(path.relative_to(root))
+            except ValueError:
+                rel = str(path)
+            file_counts[rel] = info["tokens"]
+        total_tokens = sum(info["tokens"] for _, info in results)
+        print(format_token_distribution(file_counts, total_tokens))
 
 
 if __name__ == "__main__":
