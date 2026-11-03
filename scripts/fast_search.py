@@ -79,8 +79,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Fast, token-efficient regex & symbol search for codebases"
     )
-    parser.add_argument("query", help="Regex or literal search string")
+    parser.add_argument("query", help="Search string (literal by default)")
     parser.add_argument("target", nargs="?", default=".", help="Target directory (default: .)")
+    parser.add_argument("--regex", action="store_true", help="Treat query as regular expression")
     parser.add_argument("-i", "--ignore-case", action="store_true", help="Case-insensitive search")
     parser.add_argument("-C", "--context", type=int, default=1, help="Context lines around match (default: 1)")
     parser.add_argument("--ext", help="Filter by comma-separated file extensions (e.g. py,ts,md)")
@@ -91,10 +92,11 @@ def main() -> int:
     target_path = Path(args.target).resolve()
 
     flags = re.IGNORECASE if args.ignore_case else 0
+    query_str = args.query if args.regex else re.escape(args.query)
     try:
-        pattern = re.compile(args.query, flags)
+        pattern = re.compile(query_str, flags)
     except re.error as e:
-        print(f"Error: Invalid regular expression '{args.query}': {e}", file=sys.stderr)
+        print(f"Error: Invalid regular expression '{query_str}': {e}", file=sys.stderr)
         return 1
 
     allowed_exts = None
