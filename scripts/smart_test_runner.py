@@ -68,7 +68,7 @@ def find_matching_tests(ws: Path, modified_files: list[Path]) -> list[Path]:
         for tf in test_files:
             try:
                 content = tf.read_text(encoding="utf-8", errors="replace")
-                if stem in content:
+                if tf.stem == f"test_{stem}" or stem in content:
                     matched_tests.add(tf)
                     continue
                 if any(sym in content for sym in symbols):
@@ -130,11 +130,25 @@ def run_tests(test_files: list[Path], ws: Path, test_runner: str = "unittest") -
     return res.returncode
 
 
+def find_impacted_tests(changed_files: list[str]) -> list[str]:
+    ws = Path.cwd()
+    mod_paths = [ws / f for f in changed_files if f.endswith(".py")]
+    matched = find_matching_tests(ws, mod_paths)
+    res: list[str] = []
+    for p in matched:
+        try:
+            res.append(str(p.relative_to(ws).as_posix()))
+        except ValueError:
+            res.append(str(p.as_posix()))
+    return res
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="AST-aware test impact runner.")
     parser.add_argument("files", nargs="*", type=Path, help="Specific files or tests to run")
     parser.add_argument("--workspace", type=Path, default=Path.cwd(), help="Workspace directory")
     parser.add_argument("--all", action="store_true", help="Run all discoverable tests")
+    parser.add_argument("--impacted", action="store_true", help="Run tests impacted by git diff")
     parser.add_argument("--runner", choices=["unittest", "pytest"], default="unittest", help="Test runner")
     args = parser.parse_args()
 
@@ -145,6 +159,16 @@ def main() -> None:
             test_dir = ws
         all_tests = [p for p in test_dir.rglob("test_*.py") if p.is_file()]
         sys.exit(run_tests(all_tests, ws, args.runner))
+
+    if args.impacted:
+        try:
+            res = subprocess.run(["git", "diff", "--name-only"], cwd=str(ws), capture_output=True, text=True, check=False)
+            changed_files = [line.strip() for line in res.stdout.splitlines() if line.strip()]
+            impacted_strs = find_impacted_tests(changed_files)
+            matched = [ws / f for f in impacted_strs]
+        except Exception:
+            matched = []
+        sys.exit(run_tests(matched, ws, args.runner))
 
     if args.files:
         modified = [p.resolve() for p in args.files if p.is_file()]
