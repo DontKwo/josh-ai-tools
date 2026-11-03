@@ -6,7 +6,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.fast_search import search_in_file
+from io import StringIO
+from unittest.mock import patch
+
+from scripts.fast_search import main, search_in_file
+
 
 class TestFastSearch(unittest.TestCase):
     def setUp(self) -> None:
@@ -48,6 +52,45 @@ class TestFastSearch(unittest.TestCase):
 
         # Exception handler should catch it and return empty list
         self.assertEqual(results, [])
+
+    def test_regex_search(self) -> None:
+        test_file = self.temp_dir / "test_regex.txt"
+        test_file.write_text("hello 123 world\nthis is a test\nfind 456 me\n", encoding="utf-8")
+
+        # Compile the regex pattern directly, equivalent to passing --regex
+        pattern = re.compile(r"find \d+ me")
+        results = search_in_file(test_file, pattern)
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0][0], 3)
+        self.assertTrue(any("find 456 me" in line for line in results[0][1]))
+
+    def test_literal_search(self) -> None:
+        test_file = self.temp_dir / "test_literal.txt"
+        test_file.write_text("hello world\nthis is a test\nfind .* me\n", encoding="utf-8")
+
+        # Compile the literal string using re.escape, equivalent to NOT passing --regex
+        query = "find .* me"
+        pattern = re.compile(re.escape(query))
+        results = search_in_file(test_file, pattern)
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0][0], 3)
+        self.assertTrue(any("find .* me" in line for line in results[0][1]))
+
+    def test_extension_filter(self) -> None:
+        py_file = self.temp_dir / "test.py"
+        py_file.write_text("def hello():\n    pass\n", encoding="utf-8")
+        txt_file = self.temp_dir / "test.txt"
+        txt_file.write_text("def hello():\n    pass\n", encoding="utf-8")
+
+        with patch("sys.argv", ["fast_search.py", "def", str(self.temp_dir), "--ext", "py"]), \
+             patch("sys.stdout", new=StringIO()) as fake_out:
+            main()
+            output = fake_out.getvalue()
+            self.assertIn("test.py", output)
+            self.assertNotIn("test.txt", output)
+
 
 if __name__ == "__main__":
     unittest.main()
