@@ -197,6 +197,30 @@ class TestClaudemdLinter(unittest.TestCase):
         self.assertEqual(only2, {38, 39})
 
 
+
+    def test_rule_42_unclosed_open(self) -> None:
+        bad_code = """
+def my_func():
+    open('file.txt').read()
+    f = open('file.txt')
+"""
+        good_code = """
+def my_func():
+    with open('file.txt') as f:
+        pass
+    with open('file.txt', 'r'):
+        pass
+    f = open('file.txt')
+    f.close()
+"""
+        bad_violations = self._scan_snippet(bad_code)
+        good_violations = self._scan_snippet(good_code)
+
+        self.assertIn(42, bad_violations, "Should flag bare open() without close()")
+        count_42 = bad_violations.count(42)
+        self.assertEqual(count_42, 2, "Should flag both bare open() and open() without close()")
+        self.assertNotIn(42, good_violations, "Should not flag open() in with block or with explicit close()")
+
 class TestLintFixer(unittest.TestCase):
 
     def test_auto_fixer_skips_em_dash(self) -> None:
@@ -450,6 +474,5 @@ class TestRollback(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-
 
 

@@ -60,7 +60,7 @@ LEGEND = {
     39: "Collapsed complex equation (un-decomposed multi-operation formula) or developer typo/misspelling.",
     40: "AI docstring bloat on simple function (Args/Returns on short helpers) or standard linter violation (ruff).",
     41: "Heavy AI divider banners (######, ======). Remove or replace with simple comment.",
-    42: "Cryptic micro-optimization in loop or comprehension (nested walrus / multi-conditional generator).",
+    42: "Bare open() call. Use a 'with' statement or explicitly call .close().",
     43: "Missing physical units or unit suffix on critical constant.",
     44: "Artificial equation line break (splitting expression across lines unnecessarily when under 140 chars).",
     45: "Over-engineered OOP in numerical code (unnecessary ABC/metaclass for simple mathematical POD).",
@@ -850,6 +850,57 @@ def scan_python_ast(path: Path, source: str, lines: list[str], violations: list[
                                 violations.append((path, node.lineno, 43))
 
     seen_non_import_top_level = False
+
+    # Assign parent nodes for contextual checks
+    for node in ast.walk(tree):
+        for child in ast.iter_child_nodes(node):
+            child.parent = node
+
+    # Rule 42: Unclosed bare open() calls
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "open":
+            parent = getattr(node, "parent", None)
+            is_in_with = False
+            curr = parent
+            while curr:
+                if isinstance(curr, ast.withitem) and curr.context_expr == node:
+                    is_in_with = True
+                    break
+                curr = getattr(curr, "parent", None)
+
+            if is_in_with:
+                continue
+
+            is_valid_assignment = False
+            if isinstance(parent, ast.Assign):
+                target_names = []
+                for target in parent.targets:
+                    if isinstance(target, ast.Name):
+                        target_names.append(target.id)
+
+                curr_block = getattr(parent, "parent", None)
+                while curr_block and not hasattr(curr_block, "body"):
+                    curr_block = getattr(curr_block, "parent", None)
+
+                if curr_block and hasattr(curr_block, "body"):
+                    try:
+                        idx = curr_block.body.index(parent)
+                    except ValueError:
+                        idx = -1
+                    if idx != -1:
+                        for i in range(idx + 1, len(curr_block.body)):
+                            stmt = curr_block.body[i]
+                            if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call):
+                                call = stmt.value
+                                if isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Name):
+                                    if call.func.value.id in target_names and call.func.attr == "close":
+                                        is_valid_assignment = True
+                                        break
+
+            if not is_valid_assignment:
+                line = lines[node.lineno - 1] if getattr(node, "lineno", 0) and node.lineno - 1 < len(lines) else ""
+                if not suppressed(line, 42):
+                    violations.append((path, node.lineno, 42))
 
     for node in ast.iter_child_nodes(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
