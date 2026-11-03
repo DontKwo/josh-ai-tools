@@ -70,29 +70,53 @@ TYPO_DICTIONARY: dict[str, str] = {
     "variabels": "variables",
 }
 
-WORD_SPLIT_RE = re.compile(r"[A-Za-z]+")
+WORD_SPLIT_RE = re.compile(r"[A-Za-z_]+")
 
 
 def split_identifier_words(token: str) -> list[str]:
-    # Split camelCase and PascalCase
-    words = re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)", token)
+    words: list[str] = []
+    for part in token.split('_'):
+        if not part:
+            continue
+        found = re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?=[A-Z][a-z]|\b)", part)
+        if found:
+            words.extend(found)
+        else:
+            words.append(part)
     return words if words else [token]
 
 
-def check_line_spelling(line: str) -> list[tuple[str, str]]:
+def load_ignored_words(dict_path: str | None) -> set[str]:
+    ignored: set[str] = set()
+    path = Path(dict_path) if dict_path else Path(".spellcheck_ignore")
+    if path.is_file():
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+            for line in lines:
+                w = line.strip().lower()
+                if w and not w.startswith("#"):
+                    ignored.add(w)
+        except Exception as e:
+            sys.stderr.write(f"Warning: Failed to read custom dictionary: {e}\n")
+    return ignored
+
+
+def check_line_spelling(line: str, ignore: set[str] | None = None) -> list[tuple[str, str]]:
     findings: list[tuple[str, str]] = []
     tokens = WORD_SPLIT_RE.findall(line)
     for token in tokens:
         subwords = split_identifier_words(token)
         for w in subwords:
             low = w.lower()
+            if ignore and low in ignore:
+                continue
             if low in TYPO_DICTIONARY:
                 correct = TYPO_DICTIONARY[low]
                 findings.append((w, correct))
     return findings
 
 
-def audit_file_native(path: Path) -> list[tuple[int, str, str, str]]:
+def audit_file_native(path: Path, ignore: set[str] | None = None) -> list[tuple[int, str, str, str]]:
     findings: list[tuple[int, str, str, str]] = []
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -102,7 +126,7 @@ def audit_file_native(path: Path) -> list[tuple[int, str, str, str]]:
     for i, line in enumerate(lines, 1):
         if line.strip().startswith("# noqa") or '": "' in line:
             continue
-        hits = check_line_spelling(line)
+        hits = check_line_spelling(line, ignore)
         for wrong, right in hits:
             findings.append((i, wrong, right, line.strip()))
     return findings
@@ -128,10 +152,10 @@ def run_external_typos(target: Path) -> str | None:
         return None
 
 
-def scan_target(target: Path, use_external: bool = True) -> dict[Path, list[tuple[int, str, str, str]]]:
+def scan_target(target: Path, use_external: bool = True, ignore: set[str] | None = None) -> dict[Path, list[tuple[int, str, str, str]]]:
     findings: dict[Path, list[tuple[int, str, str, str]]] = {}
     if target.is_file():
-        hits = audit_file_native(target)
+        hits = audit_file_native(target, ignore)
         if hits:
             findings[target] = hits
         return findings
@@ -143,7 +167,7 @@ def scan_target(target: Path, use_external: bool = True) -> dict[Path, list[tupl
             continue
         if p.suffix not in {".py", ".md", ".txt", ".sh", ".bat", ".json", ".js", ".ts", ".html"}:
             continue
-        hits = audit_file_native(p)
+        hits = audit_file_native(p, ignore)
         if hits:
             findings[p] = hits
     return findings
@@ -153,9 +177,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Audit source code, comments, and docs for spelling errors.")
     parser.add_argument("target", nargs="?", default=".", help="Target file or directory")
     parser.add_argument("--native-only", action="store_true", help="Bypass external typos tool")
+    parser.add_argument("--dict", type=str, help="Path to custom dictionary file")
     args = parser.parse_args()
 
     target_path = Path(args.target).resolve()
+    ignore = load_ignored_words(args.dict)
     if not target_path.exists():
         sys.stderr.write(f"Error: Target path does not exist: {target_path}\n")
         sys.exit(1)
@@ -170,7 +196,7 @@ def main() -> None:
             print("=" * 70)
             sys.exit(0)
 
-    findings = scan_target(target_path)
+    findings = scan_target(target_path, ignore=ignore)
     total_typos = sum(len(hits) for hits in findings.values())
 
     if not total_typos:

@@ -19,6 +19,8 @@ class TestSpellChecker(unittest.TestCase):
         self.assertEqual(split_identifier_words("PascalCase"), ["Pascal", "Case"])
         self.assertEqual(split_identifier_words("simple"), ["simple"])
         self.assertEqual(split_identifier_words("XMLHttpRequest"), ["XML", "Http", "Request"])
+        self.assertEqual(split_identifier_words("calc_max_val"), ["calc", "max", "val"])
+        self.assertEqual(split_identifier_words("get_User_Profile"), ["get", "User", "Profile"])
 
     def test_check_line_spelling_typos(self) -> None:
         line = "def recieve_data(arguement):  # This is neccessary"
@@ -65,6 +67,34 @@ def do_something() -> None:
 
             findings = scan_target(temp_path, use_external=False)
             self.assertEqual(len(findings), 0)
+
+    def test_custom_dictionary_ignore(self) -> None:
+        line = "def recieve_data(): pass"
+
+        findings_before = check_line_spelling(line)
+        self.assertEqual(len(findings_before), 1)
+
+        findings_after = check_line_spelling(line, ignore={"recieve"})
+        self.assertEqual(len(findings_after), 0)
+
+    def test_audit_file_with_ignore(self) -> None:
+        code = '''
+# occurence of a bug
+def do_something() -> None:
+    dependancy = True
+'''
+        with tempfile.NamedTemporaryFile(suffix=".py", mode="w", delete=False) as f:
+            f.write(code)
+            path = Path(f.name)
+
+        try:
+            findings = audit_file_native(path, ignore={"occurence"})
+            self.assertEqual(len(findings), 1)
+            wrong_words = [f[1].lower() for f in findings]
+            self.assertIn("dependancy", wrong_words)
+            self.assertNotIn("occurence", wrong_words)
+        finally:
+            path.unlink()
 
 
 if __name__ == "__main__":
