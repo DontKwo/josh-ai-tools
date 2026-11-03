@@ -12,7 +12,7 @@ DEFAULT_SKIP_DIRS = {
     ".mypy_cache", "dist", "build", ".next", ".nuxt", ".cache", "target", "vendor",
 }
 
-SUPPORTED_EXTENSIONS = {".py", ".js", ".jsx", ".ts", ".tsx", ".rs", ".go"}
+SUPPORTED_EXTENSIONS = {".py", ".js", ".jsx", ".ts", ".tsx", ".rs", ".go", ".cpp", ".hpp", ".h"}
 
 
 def extract_python_symbols(path: Path) -> dict:
@@ -83,11 +83,17 @@ def extract_regex_symbols(path: Path) -> dict[str, list[str]]:
                 symbols["exports"].append(export_name)
 
     elif suffix == ".rs":
-        type_pattern = re.compile(r"^\s*(?:pub\s+)?(?:struct|enum|trait|impl)\s+([A-Za-z0-9_]+)", re.MULTILINE)
+        type_pattern = re.compile(
+            r"^\s*(?:pub\s+)?(?:struct|enum|trait)\s+([A-Za-z0-9_]+)|"
+            r"^\s*(?:pub\s+)?impl(?:<[^>]*>)?\s+(?:[A-Za-z0-9_]+\s+for\s+)?([A-Za-z0-9_]+)",
+            re.MULTILINE,
+        )
         fn_pattern = re.compile(r"^\s*(?:pub\s+)?(?:async\s+)?fn\s+([A-Za-z0-9_]+)\s*\(", re.MULTILINE)
 
         for match in type_pattern.finditer(source_code):
-            symbols["classes"].append(match.group(1))
+            cls_name = match.group(1) or match.group(2)
+            if cls_name:
+                symbols["classes"].append(cls_name)
 
         for match in fn_pattern.finditer(source_code):
             symbols["functions"].append(match.group(1))
@@ -95,6 +101,22 @@ def extract_regex_symbols(path: Path) -> dict[str, list[str]]:
     elif suffix == ".go":
         type_pattern = re.compile(r"^\s*type\s+([A-Za-z0-9_]+)\s+(?:struct|interface)", re.MULTILINE)
         func_pattern = re.compile(r"^\s*func\s+(?:\([^)]+\)\s+)?([A-Za-z0-9_]+)\s*\(", re.MULTILINE)
+
+        for match in type_pattern.finditer(source_code):
+            symbols["classes"].append(match.group(1))
+
+        for match in func_pattern.finditer(source_code):
+            symbols["functions"].append(match.group(1))
+
+    elif suffix in {".cpp", ".hpp", ".h"}:
+        type_pattern = re.compile(r"^\s*(?:class|struct|namespace)\s+([A-Za-z0-9_]+)", re.MULTILINE)
+        func_pattern = re.compile(
+            r"^\s*(?:template\s*<[^>]*>\s*)?"
+            r"(?:(?:inline|virtual|static|constexpr|explicit|friend|extern\s+\"C\"|extern)\s+)*"
+            r"(?:[A-Za-z0-9_:]+(?:<[^>]+>)?[\s\*&]+)*"
+            r"(~?[A-Za-z0-9_]+(?:::~?[A-Za-z0-9_]+)*)\s*\(",
+            re.MULTILINE,
+        )
 
         for match in type_pattern.finditer(source_code):
             symbols["classes"].append(match.group(1))
