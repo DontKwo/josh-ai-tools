@@ -8,8 +8,11 @@ import argparse
 import importlib.util
 import json
 import re
+
 import shutil
+import subprocess
 import sys
+from typing import Union
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -20,6 +23,67 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 LINTER_SCRIPT = REPO_ROOT / "scripts" / "claudemd_linter.py"
 ENGINEERING_PATH = REPO_ROOT / "templates" / "ENGINEERING_RULES.md"
 PYTHON_RULES_PATH = REPO_ROOT / "templates" / "PYTHON_RULES.md"
+
+
+
+def check_git_tracking(repo_root: Path) -> dict[str, Union[str, bool]]:
+    info: dict[str, Union[str, bool]] = {"has_git": False, "is_repo": False, "has_tracking": False, "branch": ""}
+    git_bin = shutil.which("git")
+    if not git_bin:
+        return info
+
+    info["has_git"] = True
+    try:
+        subprocess.run(
+            [git_bin, "rev-parse", "--is-inside-work-tree"],
+            cwd=str(repo_root),
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+        info["is_repo"] = True
+
+        result = subprocess.run(
+            [git_bin, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+            cwd=str(repo_root),
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            info["has_tracking"] = True
+            info["branch"] = result.stdout.strip()
+    except (subprocess.CalledProcessError, OSError):
+        return info
+
+    return info
+
+
+def check_python_version(repo_root: Path) -> dict[str, Union[str, bool]]:
+    info: dict[str, Union[str, bool]] = {"has_toml": False, "requires_python": "", "meets_req": False}
+    toml_path = repo_root / "pyproject.toml"
+    if not toml_path.is_file():
+        return info
+
+    info["has_toml"] = True
+    try:
+        content = toml_path.read_text(encoding="utf-8")
+        match = re.search(r'requires-python\s*=\s*[\"\']([^\"\']+)[\"\']', content)
+        if match:
+            req = match.group(1)
+            info["requires_python"] = req
+
+            ver_match = re.search(r'>=\s*(\d+)\.(\d+)', req)
+            if ver_match:
+                req_major, req_minor = int(ver_match.group(1)), int(ver_match.group(2))
+                info["meets_req"] = (sys.version_info.major, sys.version_info.minor) >= (req_major, req_minor)
+            else:
+                info["meets_req"] = True
+        else:
+            info["meets_req"] = True
+    except OSError:
+        return info
+
+    return info
 
 
 def inspect_mcp_config(mcp_path: Path) -> dict:
@@ -206,10 +270,19 @@ def run_diagnostics(auto_heal: bool = False, clean_cache: bool = False, repair: 
     # 1. Check Python Environment
     print("[1] Python Runtime:")
     py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-    if sys.version_info >= (3, 9):
-        print(f"  [OK] Python {py_ver} (>= 3.9 requirement met)")
+    py_info = check_python_version(REPO_ROOT)
+
+    if py_info["has_toml"] and py_info["requires_python"]:
+        req = py_info["requires_python"]
+        if py_info["meets_req"]:
+            print(f"  [OK] Python {py_ver} (meets project requirement: {req})")
+        else:
+            print(f"  [FAIL] Python {py_ver} (does not meet project requirement: {req})")
     else:
-        print(f"  [FAIL] Python {py_ver} is too old! Please upgrade to Python 3.9+.")
+        if sys.version_info >= (3, 9):
+            print(f"  [OK] Python {py_ver} (>= 3.9 requirement met)")
+        else:
+            print(f"  [FAIL] Python {py_ver} is too old! Please upgrade to Python 3.9+.")
 
     # 2. Check uv Package Manager
     print("\n[2] uv Package Manager:")
@@ -221,11 +294,16 @@ def run_diagnostics(auto_heal: bool = False, clean_cache: bool = False, repair: 
 
     # 3. Check Git
     print("\n[3] Git Availability:")
-    git_bin = shutil.which("git")
-    if git_bin:
-        print(f"  [OK] Git executable found at: {git_bin}")
-    else:
+    git_info = check_git_tracking(REPO_ROOT)
+
+    if not git_info["has_git"]:
         print("  [WARN] Git executable not found in PATH.")
+    elif not git_info["is_repo"]:
+        print(f"  [WARN] Git is installed, but {REPO_ROOT.name} is not a git repository.")
+    elif git_info["has_tracking"]:
+        print(f"  [OK] Git remote tracking branch configured: {git_info['branch']}")
+    else:
+        print("  [WARN] Git repo has no remote tracking branch. Set up a remote to avoid sync issues.")
 
     # 4. Check Vulture
     print("\n[4] Optional AST Dependencies:")
