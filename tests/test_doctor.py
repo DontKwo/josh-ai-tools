@@ -1,10 +1,12 @@
 import json
+import subprocess
 import tempfile
+import sys
 import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from scripts.doctor import check_installed_skills, inspect_mcp_config
+from scripts.doctor import check_installed_skills, inspect_mcp_config, check_git_tracking, check_python_version
 
 
 class TestDoctor(unittest.TestCase):
@@ -106,6 +108,97 @@ class TestDoctor(unittest.TestCase):
         self.assertTrue(info["is_registered"])
         self.assertFalse(info["command_valid"])
         self.assertFalse(info["script_valid"])
+
+    @patch("scripts.doctor.shutil.which")
+    def test_check_git_tracking_no_git(self, mock_which: MagicMock) -> None:
+        mock_which.return_value = None
+        info = check_git_tracking(self.root)
+        self.assertFalse(info["has_git"])
+
+    @patch("scripts.doctor.shutil.which")
+    @patch("scripts.doctor.subprocess.run")
+    def test_check_git_tracking_not_repo(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
+        mock_which.return_value = "/usr/bin/git"
+        mock_run.side_effect = subprocess.CalledProcessError(128, "git")
+        info = check_git_tracking(self.root)
+        self.assertTrue(info["has_git"])
+        self.assertFalse(info["is_repo"])
+
+    @patch("scripts.doctor.shutil.which")
+    @patch("scripts.doctor.subprocess.run")
+    def test_check_git_tracking_no_remote(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
+        mock_which.return_value = "/usr/bin/git"
+
+        # First call works (is repo), second call fails (no remote)
+        mock_is_inside = MagicMock()
+        mock_is_inside.returncode = 0
+
+        mock_remote = MagicMock()
+        mock_remote.returncode = 128
+
+        mock_run.side_effect = [mock_is_inside, mock_remote]
+
+        info = check_git_tracking(self.root)
+        self.assertTrue(info["is_repo"])
+        self.assertFalse(info["has_tracking"])
+        self.assertEqual(info["branch"], "")
+
+    @patch("scripts.doctor.shutil.which")
+    @patch("scripts.doctor.subprocess.run")
+    def test_check_git_tracking_success(self, mock_run: MagicMock, mock_which: MagicMock) -> None:
+        mock_which.return_value = "/usr/bin/git"
+
+        mock_is_inside = MagicMock()
+        mock_is_inside.returncode = 0
+
+        mock_remote = MagicMock()
+        mock_remote.returncode = 0
+        mock_remote.stdout = "origin/main\n"
+
+        mock_run.side_effect = [mock_is_inside, mock_remote]
+
+        info = check_git_tracking(self.root)
+        self.assertTrue(info["is_repo"])
+        self.assertTrue(info["has_tracking"])
+        self.assertEqual(info["branch"], "origin/main")
+
+    def test_check_python_version_no_toml(self) -> None:
+        info = check_python_version(self.root)
+        self.assertFalse(info["has_toml"])
+
+    def test_check_python_version_no_requires(self) -> None:
+        toml = self.root / "pyproject.toml"
+        toml.write_text("[tool.something]\nkey = 'value'", encoding="utf-8")
+        info = check_python_version(self.root)
+        self.assertTrue(info["has_toml"])
+        self.assertEqual(info["requires_python"], "")
+        self.assertTrue(info["meets_req"])
+
+    @patch("scripts.doctor.sys.version_info")
+    def test_check_python_version_meets_req(self, mock_version: MagicMock) -> None:
+        mock_version.major = 3
+        mock_version.minor = 10
+
+        toml = self.root / "pyproject.toml"
+        toml.write_text("requires-python = '>=3.9'", encoding="utf-8")
+
+        info = check_python_version(self.root)
+        self.assertTrue(info["has_toml"])
+        self.assertEqual(info["requires_python"], ">=3.9")
+        self.assertTrue(info["meets_req"])
+
+    @patch("scripts.doctor.sys.version_info")
+    def test_check_python_version_fails_req(self, mock_version: MagicMock) -> None:
+        mock_version.major = 3
+        mock_version.minor = 8
+
+        toml = self.root / "pyproject.toml"
+        toml.write_text("requires-python = '>=3.10'", encoding="utf-8")
+
+        info = check_python_version(self.root)
+        self.assertTrue(info["has_toml"])
+        self.assertEqual(info["requires_python"], ">=3.10")
+        self.assertFalse(info["meets_req"])
 
 if __name__ == "__main__":
     unittest.main()
