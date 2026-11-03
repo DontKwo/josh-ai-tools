@@ -162,18 +162,14 @@ class TestClaudemdLinter(unittest.TestCase):
         codes = self._scan_snippet(code)
         self.assertIn(42, codes)
 
-    def test_rule_43_missing_physical_units(self) -> None:
-        bad_code = "PRESSURE = 101325\n"
+    def test_rule_43_duplicate_dict_keys(self) -> None:
+        bad_code = "d = {'a': 1, 'b': 2, 'a': 3, 1: 4, 1: 5}\n"
         codes_bad = self._scan_snippet(bad_code)
         self.assertIn(43, codes_bad)
 
-        good_code1 = "PRESSURE_PA = 101325\n"
-        codes_good1 = self._scan_snippet(good_code1)
-        self.assertNotIn(43, codes_good1)
-
-        good_code2 = "PRESSURE = 101325  # Pa\n"
-        codes_good2 = self._scan_snippet(good_code2)
-        self.assertNotIn(43, codes_good2)
+        good_code = "d = {'a': 1, 'b': 2, 1: 3, 2: 4}\n"
+        codes_good = self._scan_snippet(good_code)
+        self.assertNotIn(43, codes_good)
 
     def test_rule_44_artificial_equation_line_break(self) -> None:
         bad_code = "total = (\n    a + b\n    + c\n)\n"

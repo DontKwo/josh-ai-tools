@@ -61,7 +61,7 @@ LEGEND = {
     40: "AI docstring bloat on simple function (Args/Returns on short helpers) or standard linter violation (ruff).",
     41: "Heavy AI divider banners (######, ======). Remove or replace with simple comment.",
     42: "Cryptic micro-optimization in loop or comprehension (nested walrus / multi-conditional generator).",
-    43: "Missing physical units or unit suffix on critical constant.",
+    43: "Duplicate string or integer keys in dictionary literals.",
     44: "Artificial equation line break (splitting expression across lines unnecessarily when under 140 chars).",
     45: "Over-engineered OOP in numerical code (unnecessary ABC/metaclass for simple mathematical POD).",
 }
@@ -830,24 +830,22 @@ def _check_ast_try(node: ast.Try, path: Path, line: str, lines: list[str], viola
                 if not suppressed(subline, 22):
                     violations.append((path, body_node.lineno, 22))
 
+def _check_ast_dict(node: ast.Dict, path: Path, line: str, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
+    seen_keys = set()
+    for key in node.keys:
+        if isinstance(key, ast.Constant) and isinstance(key.value, (str, int)):
+            if key.value in seen_keys:
+                key_line = lines[key.lineno - 1] if key.lineno - 1 < len(lines) else line
+                if not suppressed(key_line, 43):
+                    violations.append((path, key.lineno, 43))
+            seen_keys.add(key.value)
+
 # Category D: Python AST checks
 def scan_python_ast(path: Path, source: str, lines: list[str], violations: list[tuple[Path, int, int]]) -> None:
     try:
         tree = ast.parse(source)
     except SyntaxError:
         return
-
-    # Rule 43: Missing physical units on critical constants
-    for node in tree.body:
-        if isinstance(node, ast.Assign):
-            for target in node.targets:
-                if isinstance(target, ast.Name) and target.id.isupper():
-                    target_id = target.id
-                    if any(target_id == const_name or target_id.startswith(const_name + "_") for const_name in PHYSICAL_CONST_NAMES):
-                        if not any(target_id.endswith(suf) for suf in UNIT_SUFFIXES):
-                            line = lines[node.lineno - 1] if node.lineno - 1 < len(lines) else ""
-                            if not UNIT_COMMENT_RE.search(line) and not suppressed(line, 43):
-                                violations.append((path, node.lineno, 43))
 
     seen_non_import_top_level = False
 
@@ -891,6 +889,8 @@ def scan_python_ast(path: Path, source: str, lines: list[str], violations: list[
             _check_ast_binop(node, path, line, lines, violations)
         elif isinstance(node, ast.Try):
             _check_ast_try(node, path, line, lines, violations)
+        elif isinstance(node, ast.Dict):
+            _check_ast_dict(node, path, line, lines, violations)
 
 def _base_name(node: ast.AST | None) -> str | None:
     if isinstance(node, ast.Name):
