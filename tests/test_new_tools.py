@@ -47,8 +47,9 @@ class TestNewTools(unittest.TestCase):
     def test_pack_context_files(self) -> None:
         doc = self.temp_dir / "sample.txt"
         doc.write_text("Hello payload", encoding="utf-8")
-        blocks = pack_files([doc], self.temp_dir)
+        blocks, stats = pack_files([doc], self.temp_dir, max_kb=500.0)
         self.assertEqual(len(blocks), 1)
+        self.assertEqual(len(stats), 1)
         self.assertIn("Hello payload", blocks[0])
 
     def test_secret_sanitizer_masking(self) -> None:
