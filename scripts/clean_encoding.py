@@ -46,11 +46,41 @@ PLACEHOLDER_MAP = {
 SKIP_DIRS = {".git", ".venv", "venv", "node_modules", "__pycache__", "dist", "build"}
 
 
+INVISIBLE_CHARS = {
+    "\u200b": "",  # ZWSP
+    "\u200c": "",  # ZWNJ
+    "\u200d": "",  # ZWJ
+    "\ufeff": "",  # BOM
+}
+
+
 def clean_content(content: str, degrees_to_word: bool = False) -> tuple[str, list[str]]:
     changes = []
     new_content = content
 
-    # 1. Clean mojibake sequences
+    # 1. Clean invisible characters
+    for bad, good in INVISIBLE_CHARS.items():
+        if bad in new_content:
+            parts = new_content.split(bad)
+            count = len(parts) - 1
+            new_content = good.join(parts)
+            changes.append(f"Removed {count}x invisible char U+{ord(bad):04X}")
+
+    # 2. Normalize fullwidth ASCII
+    fw_count = 0
+    norm_chars = []
+    for char in new_content:
+        if 0xFF01 <= ord(char) <= 0xFF5E:
+            norm_chars.append(chr(ord(char) - 0xFEE0))
+            fw_count += 1
+        else:
+            norm_chars.append(char)
+
+    if fw_count > 0:
+        new_content = "".join(norm_chars)
+        changes.append(f"Normalized {fw_count}x fullwidth chars")
+
+    # 3. Clean mojibake sequences
     for bad, good in MOJIBAKE_MAP.items():
         if bad in new_content:
             parts = new_content.split(bad)
@@ -58,7 +88,7 @@ def clean_content(content: str, degrees_to_word: bool = False) -> tuple[str, lis
             new_content = good.join(parts)
             changes.append(f"Replaced {count}x '{bad}' -> '{good}'")
 
-    # 2. Clean corrupted placeholders
+    # 4. Clean corrupted placeholders
     for bad_ph, good_ph in PLACEHOLDER_MAP.items():
         if bad_ph in new_content:
             parts = new_content.split(bad_ph)
@@ -66,7 +96,7 @@ def clean_content(content: str, degrees_to_word: bool = False) -> tuple[str, lis
             new_content = good_ph.join(parts)
             changes.append(f"Replaced {count}x {bad_ph} -> {good_ph}")
 
-    # 3. Optional: replace degree symbols with word 'degrees'
+    # 5. Optional: replace degree symbols with word 'degrees'
     if degrees_to_word and "°" in new_content:
         parts = new_content.split("°")
         count = len(parts) - 1
