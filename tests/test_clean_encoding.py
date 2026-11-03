@@ -68,6 +68,18 @@ class TestCleanContent(unittest.TestCase):
         self.assertEqual(cleaned_text, sample_text)
         self.assertEqual(len(change_list), 0)
 
+    def test_invisible_chars(self) -> None:
+        sample_text = "text\u200Bwith\u200Cinvisible\u200Dchars\uFEFF"
+        cleaned_text, change_list = clean_content(sample_text)
+        self.assertEqual(cleaned_text, "textwithinvisiblechars")
+        self.assertGreater(len(change_list), 0)
+
+    def test_fullwidth_normalization(self) -> None:
+        sample_text = "Ｈｅｌｌｏ！ １２３"
+        cleaned_text, change_list = clean_content(sample_text)
+        self.assertEqual(cleaned_text, "Hello! 123")
+        self.assertGreater(len(change_list), 0)
+
 
 class TestCleanFile(unittest.TestCase):
     """Test file-level reading, cleaning, and writing."""
