@@ -36,6 +36,7 @@ HOOK_SCRIPT = REPO_ROOT / "scripts" / "install_antigravity_hooks.py"
 VARS_SCRIPT = REPO_ROOT / "scripts" / "check_variable_names.py"
 SPELL_SCRIPT = REPO_ROOT / "scripts" / "spell_checker.py"
 GRILL_SCRIPT = REPO_ROOT / "scripts" / "grill_user.py"
+TYPE_COVERAGE_SCRIPT = REPO_ROOT / "scripts" / "type_coverage.py"
 
 IS_WINDOWS = platform.system() == "Windows"
 BASE_CMD: list[str] = (
@@ -362,6 +363,16 @@ TOOLS = [
             },
         },
     },
+    {
+        "name": "analyze_type_coverage",
+        "description": "Analyze type annotation coverage for parameters and return types across a file or directory tree.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "target": {"type": "string", "description": "The file or directory to analyze (default is current directory)."},
+            },
+        },
+    },
 ]
 
 
@@ -621,6 +632,13 @@ def _handle_grill_user(arguments: dict, effective_cwd: Path | None) -> list[dict
     return [{"type": "text", "text": output}]
 
 
+
+def _handle_analyze_type_coverage(arguments: dict, effective_cwd: Path | None) -> list[dict]:
+    target = arguments.get("target", ".")
+    cmd = BASE_CMD + [ str(TYPE_COVERAGE_SCRIPT), target]
+    output = run_command_tool(cmd, cwd=effective_cwd)
+    return [{"type": "text", "text": output}]
+
 TOOL_HANDLERS = {
     "run_linter": _handle_run_linter,
     "run_safe_fixer": _handle_run_safe_fixer,
@@ -645,6 +663,7 @@ TOOL_HANDLERS = {
     "audit_variable_names": _handle_audit_variable_names,
     "check_spelling": _handle_check_spelling,
     "grill_user": _handle_grill_user,
+    "analyze_type_coverage": _handle_analyze_type_coverage,
 }
 
 

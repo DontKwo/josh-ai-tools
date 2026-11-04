@@ -64,7 +64,7 @@ class TestMCPServer(unittest.TestCase):
 
     def test_tools_list_count(self) -> None:
         """Verify all 23 tools are defined."""
-        self.assertEqual(len(TOOLS), 23)
+        self.assertEqual(len(TOOLS), 24)
         for t in TOOLS:
             self.assertIn("name", t)
             self.assertIn("description", t)
